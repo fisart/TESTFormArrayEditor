@@ -1,84 +1,72 @@
 {
-  "elements": [
-    {
-      "type": "List",
-      "name": "Entries",
-      "caption": "Test array editor",
-      "rowCount": 10,
-      "add": true,
-      "delete": true,
-      "sort": {
-        "column": "Key",
-        "direction": "ascending"
-      },
-      "columns": [
+    "elements": [
         {
-          "caption": "Key",
-          "name": "Key",
-          "width": "150px",
-          "add": "",
-          "edit": {
-            "type": "ValidationTextBox"
-          }
-        },
-        {
-          "caption": "User",
-          "name": "User",
-          "width": "120px",
-          "add": "",
-          "edit": {
-            "type": "ValidationTextBox"
-          }
-        },
-        {
-          "caption": "Password",
-          "name": "PW",
-          "width": "150px",
-          "add": "",
-          "edit": {
-            "type": "PasswordTextBox"
-          }
-        },
-        {
-          "caption": "URL",
-          "name": "URL",
-          "width": "200px",
-          "add": "",
-          "edit": {
-            "type": "ValidationTextBox"
-          }
-        },
-        {
-          "caption": "Location",
-          "name": "Location",
-          "width": "150px",
-          "add": "",
-          "edit": {
-            "type": "Select",
-            "options": [
-              { "caption": "Hermitage", "value": "Hermitage" },
-              { "caption": "Berlin",    "value": "Berlin" },
-              { "caption": "Other",     "value": "Other" }
+            "type": "List",
+            "name": "Entries",
+            "caption": "Password Repository",
+            "add": true,
+            "delete": true,
+            "sort": {
+                "column": "Key",
+                "direction": "ascending"
+            },
+            "columns": [
+                {
+                    "name": "Key",
+                    "caption": "Identifier/Key",
+                    "width": "150px",
+                    "add": "NewKey",
+                    "edit": {
+                        "type": "ValidationTextBox"
+                    }
+                },
+                {
+                    "name": "User",
+                    "caption": "Username",
+                    "width": "150px",
+                    "add": "",
+                    "edit": {
+                        "type": "ValidationTextBox"
+                    }
+                },
+                {
+                    "name": "PW",
+                    "caption": "Password",
+                    "width": "150px",
+                    "add": "",
+                    "edit": {
+                        "type": "PasswordTextBox" 
+                    }
+                },
+                {
+                    "name": "URL",
+                    "caption": "URL",
+                    "width": "200px",
+                    "add": "",
+                    "edit": {
+                        "type": "ValidationTextBox"
+                    }
+                },
+                {
+                    "name": "Location",
+                    "caption": "Location",
+                    "width": "100px",
+                    "add": "",
+                    "edit": {
+                        "type": "ValidationTextBox"
+                    }
+                },
+                {
+                    "name": "IP",
+                    "caption": "IP Address",
+                    "width": "120px",
+                    "add": "",
+                    "edit": {
+                        "type": "ValidationTextBox"
+                    }
+                }
             ]
-          }
-        },
-        {
-          "caption": "IP",
-          "name": "IP",
-          "width": "120px",
-          "add": "",
-          "edit": {
-            "type": "ValidationTextBox"
-          }
         }
-      ]
-    }
-  ],
-  "actions": [
-    {
-      "type": "Label",
-      "caption": "Use this list as test editor for your array. Changes are stored in the property \"Entries\"."
-    }
-  ]
+    ]
 }
 
