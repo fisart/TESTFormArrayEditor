@@ -5,19 +5,13 @@
             "name": "TestList",
             "caption": "Test Einträge",
             "rowCount": 5,
+            "add": false,
+            "delete": false,
+            "onEdit": "TMOD_HandleClick($id, $TestList);",
             "columns": [
                 { "caption": "Name", "name": "Key", "width": "200px" },
-                { "caption": "Inhalt", "name": "Value", "width": "auto" },
-                {
-                    "caption": "Aktion",
-                    "name": "Action",
-                    "width": "100px",
-                    "edit": {
-                        "type": "Button",
-                        "caption": "KLICK MICH",
-                        "onClick": "TMOD_HandleClick($id, $TestList);"
-                    }
-                }
+                { "caption": "Inhalt", "name": "Value", "width": "auto", "edit": { "type": "ValidationTextBox" } },
+                { "caption": "Aktion", "name": "Action", "width": "100px" }
             ]
         }
     ],

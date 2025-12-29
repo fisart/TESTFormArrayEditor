@@ -5,52 +5,46 @@ class TestModul extends IPSModuleStrict {
 
     public function Create(): void {
         parent::Create();
-        // Wir nutzen einen Buffer, um die Liste im RAM zu halten
+        // Start-Daten im RAM-Buffer
         $this->SetBuffer("TestData", json_encode([
-            ['Key' => 'Eintrag_A', 'Value' => 'Geheimnis 1'],
-            ['Key' => 'Eintrag_B', 'Value' => 'Geheimnis 2'],
-            ['Key' => 'Ordner_C',  'Value' => 'Ich bin ein Ordner']
+            ['Key' => 'Eintrag_A', 'Value' => 'Geheimnis 1', 'Action' => '📂 Open'],
+            ['Key' => 'Eintrag_B', 'Value' => 'Geheimnis 2', 'Action' => '📂 Open'],
+            ['Key' => 'Ordner_C',  'Value' => 'Ich bin ein Ordner', 'Action' => '📂 Open']
         ]));
-    }
-
-    public function ApplyChanges(): void {
-        parent::ApplyChanges();
     }
 
     public function GetConfigurationForm(): string {
         $json = json_decode(file_get_contents(__DIR__ . "/form.json"), true);
         
-        // Daten beim Laden direkt in die Liste injizieren
+        // Daten injizieren
         $data = json_decode($this->GetBuffer("TestData"), true);
         $json['elements'][0]['values'] = $data;
 
         return json_encode($json);
     }
 
-    // Diese Funktion füllt die Daten manuell (zum Testen)
     public function FillData(): void {
         $this->ReloadForm();
     }
 
-    // DAS IST DIE ENTSCHEIDENDE FUNKTION
     public function HandleClick(array $TestList): void {
-        // 1. Index der angeklickten Zeile holen
+        // In Symcon 8.1 enthält $TestList bei onEdit:
+        // 'row' => Index der Zeile
+        // 'values' => Alle Zeilen als Array
+        
         $index = $TestList['row'];
         $rows  = $TestList['values'];
 
-        // 2. Prüfen ob gültig
         if ($index < 0 || !isset($rows[$index])) {
-            echo "Fehler: Keine Zeile erkannt.";
+            echo "Keine Zeile ausgewählt.";
             return;
         }
 
-        // 3. Den Key auslesen
         $name = $rows[$index]['Key'];
 
-        // 4. BEWEIS: Ein Popup im Browser anzeigen
-        echo "ERFOLG! Du hast auf '$name' geklickt.";
-
-        // 5. DIAGNOSE: Ins Log schreiben
-        $this->LogMessage("Klick auf Index $index erkannt. Name: $name", KL_MESSAGE);
+        // POPUP ERZWINGEN
+        echo "ERFOLG! Du hast auf '$name' (Zeile $index) geklickt.";
+        
+        $this->LogMessage("Klick auf Name: " . $name, KL_MESSAGE);
     }
 }
