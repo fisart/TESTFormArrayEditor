@@ -4,7 +4,7 @@
       "type": "List",
       "name": "Entries",
       "caption": "Test array editor",
-      "rowCount": 12,
+      "rowCount": 10,
       "add": true,
       "delete": true,
       "sort": {
@@ -15,54 +15,61 @@
         {
           "caption": "Key",
           "name": "Key",
-          "width": "140px",
+          "width": "150px",
           "add": "",
-          "edit": { "type": "EditTextBox" }
+          "edit": {
+            "type": "ValidationTextBox"
+          }
         },
         {
           "caption": "User",
           "name": "User",
-          "width": "140px",
+          "width": "120px",
           "add": "",
-          "edit": { "type": "EditTextBox" }
+          "edit": {
+            "type": "ValidationTextBox"
+          }
         },
         {
-          "caption": "Password (visible)",
+          "caption": "Password",
           "name": "PW",
-          "width": "160px",
+          "width": "150px",
           "add": "",
-          "edit": { "type": "EditTextBox" }
+          "edit": {
+            "type": "PasswordTextBox"
+          }
         },
         {
           "caption": "URL",
           "name": "URL",
-          "width": "240px",
+          "width": "200px",
           "add": "",
-          "edit": { "type": "EditTextBox" }
+          "edit": {
+            "type": "ValidationTextBox"
+          }
         },
         {
-          "caption": "Location (type freely)",
+          "caption": "Location",
           "name": "Location",
-          "width": "190px",
-          "add": "",
-          "edit": { "type": "EditTextBox" }
-        },
-        {
-          "caption": "Pick Location (optional)",
-          "name": "LocationPick",
-          "width": "210px",
+          "width": "150px",
           "add": "",
           "edit": {
             "type": "Select",
-            "options": []
+            "options": [
+              { "caption": "Hermitage", "value": "Hermitage" },
+              { "caption": "Berlin",    "value": "Berlin" },
+              { "caption": "Other",     "value": "Other" }
+            ]
           }
         },
         {
           "caption": "IP",
           "name": "IP",
-          "width": "140px",
+          "width": "120px",
           "add": "",
-          "edit": { "type": "EditTextBox" }
+          "edit": {
+            "type": "ValidationTextBox"
+          }
         }
       ]
     }
@@ -70,19 +77,8 @@
   "actions": [
     {
       "type": "Label",
-      "caption": "Location: type any text. If you want, choose a previously used location in 'Pick Location' and click 'Apply picked locations'."
-    },
-    {
-      "type": "Button",
-      "caption": "Apply picked locations",
-      "onClick": "TST_ApplyLocationPicks($id);"
-    },
-    {
-      "type": "Button",
-      "caption": "DebugDump to Log",
-      "onClick": "TST_DebugDump($id);"
+      "caption": "Use this list as test editor for your array. Changes are stored in the property \"Entries\"."
     }
   ]
 }
-
 
