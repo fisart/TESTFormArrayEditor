@@ -1,0 +1,14 @@
+{
+    "id": "{12345678-90AB-CDEF-1234-567890ABCDEF}",
+    "name": "TestModul",
+    "type": 3,
+    "vendor": "Test",
+    "aliases": [
+        "UI Communication Test"
+    ],
+    "url": "",
+    "parentRequirements": [],
+    "childRequirements": [],
+    "implemented": [],
+    "prefix": "TMOD"
+}

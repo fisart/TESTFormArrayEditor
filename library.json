@@ -1,0 +1,12 @@
+{
+    "id": "{7A3F2B1C-5D6E-4F8A-9B0C-1D2E3F4A5B6C}",
+    "author": "Artur",
+    "name": "Test Module Suite",
+    "url": "",
+    "version": "1.0",
+    "build": 0,
+    "date": 0,
+    "compatibility": {
+        "version": "6.0"
+    }
+}

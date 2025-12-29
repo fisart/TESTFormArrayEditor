@@ -1,0 +1,31 @@
+{
+    "elements": [
+        {
+            "type": "List",
+            "name": "TestList",
+            "caption": "Test Einträge",
+            "rowCount": 5,
+            "columns": [
+                { "caption": "Name", "name": "Key", "width": "200px" },
+                { "caption": "Inhalt", "name": "Value", "width": "auto" },
+                {
+                    "caption": "Aktion",
+                    "name": "Action",
+                    "width": "100px",
+                    "edit": {
+                        "type": "Button",
+                        "caption": "KLICK MICH",
+                        "onClick": "TMOD_HandleClick($id, $TestList);"
+                    }
+                }
+            ]
+        }
+    ],
+    "actions": [
+        {
+            "type": "Button",
+            "caption": "Liste mit Testdaten füllen",
+            "onClick": "TMOD_FillData($id);"
+        }
+    ]
+}
