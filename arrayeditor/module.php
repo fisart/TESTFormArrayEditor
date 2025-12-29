@@ -1,48 +1,56 @@
 <?php
-declare(strict_types=1);
 
-class TestModul extends IPSModuleStrict {
-
-    public function Create(): void {
+class ArrayEditorTest extends IPSModule
+{
+    public function Create()
+    {
+        // Never delete this line!
         parent::Create();
-        // Wir markieren die Instanz als "Entsperrt" für den Test
-        $this->SetBuffer("IsUnlocked", "true");
-        $this->SetBuffer("TestData", json_encode([
-            ['Key' => 'Eintrag_A', 'Value' => 'Geheimnis 1'],
-            ['Key' => 'Eintrag_B', 'Value' => 'Geheimnis 2'],
-            ['Key' => 'Ordner_C',  'Value' => 'Ich bin ein Ordner']
-        ]));
+
+        // List content is stored as JSON string
+        $this->RegisterPropertyString('Entries', '[]');
     }
 
-    public function GetConfigurationForm(): string {
-        $json = json_decode(file_get_contents(__DIR__ . "/form.json"), true);
-        
-        // Liste befüllen
-        $data = json_decode($this->GetBuffer("TestData"), true) ?: [];
-        $values = [];
-        foreach ($data as $row) {
-            $values[] = [
-                'Key'    => $row['Key'],
-                'Value'  => $row['Value'],
-                // TRICK: Wir schreiben den Namen des Keys in die Action-Zelle
-                'Action' => $row['Key'] 
-            ];
-        }
-        $json['elements'][0]['values'] = $values;
+    public function ApplyChanges()
+    {
+        parent::ApplyChanges();
 
-        return json_encode($json);
+        // For testing, you could log the converted array:
+        // $entries = $this->GetEntriesAssoc();
+        // IPS_LogMessage('ArrayEditorTest', print_r($entries, true));
     }
 
-    // Wir empfangen jetzt einen STRING (den Namen aus der Zelle)
-    public function HandleClick(string $Name): void {
-        if ($Name === "") {
-            echo "Fehler: Kein Name empfangen.";
-            return;
+    /**
+     * Returns the entries as an associative array:
+     * [ 'Key' => [User, PW, URL, Location, IP], ... ]
+     */
+    public function GetEntriesAssoc(): array
+    {
+        $json = $this->ReadPropertyString('Entries');
+        $list = json_decode($json, true);
+        if (!is_array($list)) {
+            return [];
         }
 
-        // BEWEIS-POPUP
-        echo "ERFOLG! PHP hat den Namen '" . $Name . "' direkt aus der Zelle erhalten.";
-        
-        $this->LogMessage("Klick auf Name: " . $Name, KL_MESSAGE);
+        $result = [];
+        foreach ($list as $row) {
+            if (!isset($row['Key']) || $row['Key'] === '') {
+                // Ignore rows without a key
+                continue;
+            }
+            $key = $row['Key'];
+            unset($row['Key']);
+            $result[$key] = $row;
+        }
+
+        return $result;
+    }
+
+    /**
+     * (Optional) Simple test function you can call from a script.
+     */
+    public function DebugDump()
+    {
+        IPS_LogMessage('ArrayEditorTest', print_r($this->GetEntriesAssoc(), true));
     }
 }

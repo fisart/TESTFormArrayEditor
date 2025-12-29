@@ -1,27 +1,83 @@
 {
-    "elements": [
+  "elements": [
+    {
+      "type": "List",
+      "name": "Entries",
+      "caption": "Test array editor",
+      "rowCount": 10,
+      "add": true,
+      "delete": true,
+      "sort": {
+        "column": "Key",
+        "direction": "ascending"
+      },
+      "columns": [
         {
-            "type": "List",
-            "name": "TestList",
-            "caption": "Test Einträge",
-            "rowCount": 5,
-            "add": false,
-            "delete": false,
-            "columns": [
-                { "caption": "Name", "name": "Key", "width": "200px" },
-                { "caption": "Inhalt", "name": "Value", "width": "auto" },
-                {
-                    "caption": "Aktion",
-                    "name": "Action",
-                    "width": "150px",
-                    "edit": {
-                        "type": "Button",
-                        "caption": "Öffnen",
-                        "onClick": "TMOD_HandleClick($id, $Value);"
-                    }
-                }
+          "caption": "Key",
+          "name": "Key",
+          "width": "150px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "caption": "User",
+          "name": "User",
+          "width": "120px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "caption": "Password",
+          "name": "PW",
+          "width": "150px",
+          "add": "",
+          "edit": {
+            "type": "PasswordTextBox"
+          }
+        },
+        {
+          "caption": "URL",
+          "name": "URL",
+          "width": "200px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
+        },
+        {
+          "caption": "Location",
+          "name": "Location",
+          "width": "150px",
+          "add": "",
+          "edit": {
+            "type": "Select",
+            "options": [
+              { "caption": "Hermitage", "value": "Hermitage" },
+              { "caption": "Berlin",    "value": "Berlin" },
+              { "caption": "Other",     "value": "Other" }
             ]
+          }
+        },
+        {
+          "caption": "IP",
+          "name": "IP",
+          "width": "120px",
+          "add": "",
+          "edit": {
+            "type": "ValidationTextBox"
+          }
         }
-    ],
-    "actions": []
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "type": "Label",
+      "caption": "Use this list as test editor for your array. Changes are stored in the property \"Entries\"."
+    }
+  ]
 }
