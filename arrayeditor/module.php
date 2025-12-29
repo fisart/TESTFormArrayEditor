@@ -5,7 +5,7 @@ class TestModul extends IPSModuleStrict {
 
     public function Create(): void {
         parent::Create();
-        // Start-Daten im RAM-Buffer
+        // Wir speichern die Testdaten im RAM-Buffer
         $this->SetBuffer("TestData", json_encode([
             ['Key' => 'Eintrag_A', 'Value' => 'Geheimnis 1', 'Action' => '📂 Open'],
             ['Key' => 'Eintrag_B', 'Value' => 'Geheimnis 2', 'Action' => '📂 Open'],
@@ -16,7 +16,7 @@ class TestModul extends IPSModuleStrict {
     public function GetConfigurationForm(): string {
         $json = json_decode(file_get_contents(__DIR__ . "/form.json"), true);
         
-        // Daten injizieren
+        // Wir befüllen die Liste aus dem Buffer
         $data = json_decode($this->GetBuffer("TestData"), true);
         $json['elements'][0]['values'] = $data;
 
@@ -27,24 +27,24 @@ class TestModul extends IPSModuleStrict {
         $this->ReloadForm();
     }
 
-    public function HandleClick(array $TestList): void {
-        // In Symcon 8.1 enthält $TestList bei onEdit:
-        // 'row' => Index der Zeile
-        // 'values' => Alle Zeilen als Array
+    // Wir empfangen NUR den Index als Ganzzahl (Integer)
+    public function HandleClick(int $index): void {
         
-        $index = $TestList['row'];
-        $rows  = $TestList['values'];
+        // 1. Wir holen uns die Daten aus unserem eigenen Buffer
+        $data = json_decode($this->GetBuffer("TestData"), true);
 
-        if ($index < 0 || !isset($rows[$index])) {
-            echo "Keine Zeile ausgewählt.";
+        // 2. Wir prüfen, ob der Index existiert
+        if (!isset($data[$index])) {
+            echo "Fehler: Zeile $index nicht im Buffer gefunden.";
             return;
         }
 
-        $name = $rows[$index]['Key'];
+        // 3. Den Namen aus dem Buffer-Eintrag lesen
+        $name = $data[$index]['Key'];
 
-        // POPUP ERZWINGEN
-        echo "ERFOLG! Du hast auf '$name' (Zeile $index) geklickt.";
+        // 4. ERFOLG!
+        echo "ERFOLG! PHP hat Zeile $index erkannt. Der Key heißt: '$name'";
         
-        $this->LogMessage("Klick auf Name: " . $name, KL_MESSAGE);
+        $this->LogMessage("Klick auf Index $index erkannt. Name: $name", KL_MESSAGE);
     }
 }

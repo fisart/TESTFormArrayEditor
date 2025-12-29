@@ -7,7 +7,7 @@
             "rowCount": 5,
             "add": false,
             "delete": false,
-            "onEdit": "TMOD_HandleClick($id, $TestList);",
+            "onEdit": "TMOD_HandleClick($id, $index);",
             "columns": [
                 { "caption": "Name", "name": "Key", "width": "200px" },
                 { "caption": "Inhalt", "name": "Value", "width": "auto", "edit": { "type": "ValidationTextBox" } },
