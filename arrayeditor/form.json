@@ -17,40 +17,40 @@
           "name": "Key",
           "width": "140px",
           "add": "",
-          "edit": { "type": "ValidationTextBox" }
+          "edit": { "type": "EditTextBox" }
         },
         {
           "caption": "User",
           "name": "User",
           "width": "140px",
           "add": "",
-          "edit": { "type": "ValidationTextBox" }
+          "edit": { "type": "EditTextBox" }
         },
         {
-          "caption": "Password",
+          "caption": "Password (visible)",
           "name": "PW",
           "width": "160px",
           "add": "",
-          "edit": { "type": "PasswordTextBox" }
+          "edit": { "type": "EditTextBox" }
         },
         {
           "caption": "URL",
           "name": "URL",
           "width": "240px",
           "add": "",
-          "edit": { "type": "ValidationTextBox" }
+          "edit": { "type": "EditTextBox" }
         },
         {
-          "caption": "Location",
+          "caption": "Location (type freely)",
           "name": "Location",
-          "width": "170px",
+          "width": "190px",
           "add": "",
-          "edit": { "type": "ValidationTextBox" }
+          "edit": { "type": "EditTextBox" }
         },
         {
-          "caption": "Pick Location",
+          "caption": "Pick Location (optional)",
           "name": "LocationPick",
-          "width": "200px",
+          "width": "210px",
           "add": "",
           "edit": {
             "type": "Select",
@@ -62,7 +62,7 @@
           "name": "IP",
           "width": "140px",
           "add": "",
-          "edit": { "type": "ValidationTextBox" }
+          "edit": { "type": "EditTextBox" }
         }
       ]
     }
@@ -70,7 +70,7 @@
   "actions": [
     {
       "type": "Label",
-      "caption": "Type any Location freely, or pick an existing Location from the dropdown and click the button to apply it."
+      "caption": "Location: type any text. If you want, choose a previously used location in 'Pick Location' and click 'Apply picked locations'."
     },
     {
       "type": "Button",
@@ -84,4 +84,5 @@
     }
   ]
 }
+
 

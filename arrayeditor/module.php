@@ -5,8 +5,6 @@ class TestModul extends IPSModule
     public function Create()
     {
         parent::Create();
-
-        // Stores the List content as JSON string
         $this->RegisterPropertyString('Entries', '[]');
     }
 
@@ -15,16 +13,11 @@ class TestModul extends IPSModule
         parent::ApplyChanges();
     }
 
-    /**
-     * Dynamically inject options into the LocationPick dropdown:
-     * unique values from the Location field across ALL entries.
-     */
     public function GetConfigurationForm()
     {
         $formPath = __DIR__ . '/form.json';
         $form = json_decode(@file_get_contents($formPath), true);
         if (!is_array($form)) {
-            // fallback minimal form if file missing/broken
             $form = ['elements' => [], 'actions' => []];
         }
 
@@ -33,7 +26,7 @@ class TestModul extends IPSModule
             $entries = [];
         }
 
-        // Collect unique locations from Location field ONLY
+        // Unique Locations from Location field only
         $seen = [];
         $locationOptions = [];
         foreach ($entries as $row) {
@@ -42,13 +35,10 @@ class TestModul extends IPSModule
                 continue;
             }
             $seen[$loc] = true;
-            $locationOptions[] = [
-                'caption' => $loc,
-                'value'   => $loc
-            ];
+            $locationOptions[] = ['caption' => $loc, 'value' => $loc];
         }
 
-        // Inject options into the LocationPick column
+        // Inject into LocationPick column
         foreach ($form['elements'] as &$el) {
             if (($el['type'] ?? '') === 'List' && ($el['name'] ?? '') === 'Entries') {
                 foreach ($el['columns'] as &$col) {
@@ -62,10 +52,6 @@ class TestModul extends IPSModule
         return json_encode($form);
     }
 
-    /**
-     * Copy LocationPick -> Location for all rows that have a pick selected.
-     * Called via Button in the form.
-     */
     public function ApplyLocationPicks()
     {
         $entries = json_decode($this->ReadPropertyString('Entries'), true);
@@ -85,13 +71,9 @@ class TestModul extends IPSModule
         IPS_ApplyChanges($this->InstanceID);
     }
 
-    /**
-     * Returns associative array: [Key => [User,PW,URL,Location,IP], ...]
-     */
     public function GetEntriesAssoc(): array
     {
-        $json = $this->ReadPropertyString('Entries');
-        $list = json_decode($json, true);
+        $list = json_decode($this->ReadPropertyString('Entries'), true);
         if (!is_array($list)) {
             return [];
         }
@@ -104,7 +86,7 @@ class TestModul extends IPSModule
             }
 
             unset($row['Key']);
-            unset($row['LocationPick']); // helper UI field, not part of the real data
+            unset($row['LocationPick']); // UI helper only
 
             $result[$key] = $row;
         }
@@ -117,4 +99,3 @@ class TestModul extends IPSModule
         IPS_LogMessage('TestModul', print_r($this->GetEntriesAssoc(), true));
     }
 }
-
