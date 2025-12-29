@@ -1,0 +1,12 @@
+{
+    "translations": {
+        "de": {
+            "Test Einträge": "Test Einträge",
+            "Name": "Schlüssel (Key)",
+            "Inhalt": "Wert (Value)",
+            "Aktion": "Aktion",
+            "KLICK MICH": "KLICK MICH",
+            "Liste mit Testdaten füllen": "Liste mit Testdaten füllen"
+        }
+    }
+}
