@@ -13,21 +13,15 @@
                 {
                     "caption": "Aktion",
                     "name": "Action",
-                    "width": "100px",
+                    "width": "150px",
                     "edit": {
                         "type": "Button",
-                        "caption": "KLICK",
-                        "onClick": "TMOD_HandleClick($id, $index);"
+                        "caption": "Öffnen",
+                        "onClick": "TMOD_HandleClick($id, $Value);"
                     }
                 }
             ]
         }
     ],
-    "actions": [
-        {
-            "type": "Button",
-            "caption": "Liste mit Testdaten füllen",
-            "onClick": "TMOD_FillData($id);"
-        }
-    ]
+    "actions": []
 }
