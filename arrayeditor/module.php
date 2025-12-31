@@ -23,7 +23,7 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "List",
                     "name" => "VaultEditor",
-                    "caption" => "Geheimnis-Tresor",
+                    "caption" => "Geheimnis-Tresor (Auto-Save)",
                     "rowCount" => 5,
                     "add" => true,
                     "delete" => true,
@@ -37,11 +37,6 @@ class AttributeVaultTest extends IPSModule {
                     "type" => "Button",
                     "caption" => "🔓 Tresor jetzt verschlüsseln & speichern",
                     "onClick" => "AVT_UpdateVault(\$id, \$VaultEditor);"
-                ],
-                [
-                    "type" => "Button",
-                    "caption" => "🔍 Test: Ident 'Test' auslesen",
-                    "onClick" => "echo AVT_GetSecret(\$id, 'Test');"
                 ]
             ]
         ];
@@ -50,28 +45,35 @@ class AttributeVaultTest extends IPSModule {
     }
 
     /**
-     * Diese Funktion wird durch den Button "Tresor jetzt verschlüsseln" aufgerufen.
+     * WICHTIG: Das 'array' vor $VaultEditor wurde entfernt, 
+     * da IP-Symcon hier oft einen JSON-String oder ein Objekt liefert.
      */
-    public function UpdateVault(array $VaultEditor): void {
-        // 1. Notfall-Log ins Haupt-Meldungsfenster
-        IPS_LogMessage("SecretsManager", "UpdateVault wurde aufgerufen! Zeilen: " . count($VaultEditor));
-        
-        // 2. Debug-Log (im Debug-Tab der Instanz)
-        $this->SendDebug("UpdateVault", "Empfangene Daten: " . json_encode($VaultEditor), 0);
+    public function UpdateVault($VaultEditor): void {
+        // 1. Umwandlung: Wenn es ein String (JSON) ist, decodieren. Sonst als Array casten.
+        $data = is_string($VaultEditor) ? json_decode($VaultEditor, true) : (array)$VaultEditor;
 
-        // 3. Verschlüsseln
-        $encryptedBlob = $this->EncryptData($VaultEditor);
-        
-        if ($encryptedBlob === "") {
-            $this->SendDebug("UpdateVault", "ERROR: Verschlüsselung schlug fehl!", 0);
+        // Validierung
+        if (!is_array($data)) {
+            $this->SendDebug("UpdateVault", "Fehler: Daten konnten nicht in ein Array umgewandelt werden.", 0);
+            echo "❌ Fehler beim Verarbeiten der Daten!";
             return;
         }
 
-        // 4. In Attribut schreiben
-        $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
-        $this->SendDebug("UpdateVault", "Erfolgreich im Attribut gespeichert.", 0);
+        $this->SendDebug("UpdateVault", "Empfangene Zeilen: " . count($data), 0);
+
+        // 2. Verschlüsseln
+        $encryptedBlob = $this->EncryptData($data);
         
-        echo "✅ Tresor erfolgreich gespeichert!";
+        if ($encryptedBlob === "") {
+            echo "❌ Fehler: Verschlüsselung fehlgeschlagen!";
+            return;
+        }
+
+        // 3. In Attribut schreiben
+        $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
+        
+        $this->SendDebug("UpdateVault", "Erfolgreich gespeichert.", 0);
+        echo "✅ Tresor erfolgreich verschlüsselt und gespeichert!";
     }
 
     public function GetSecret(string $Ident): string {
@@ -79,10 +81,10 @@ class AttributeVaultTest extends IPSModule {
         foreach ($data as $entry) {
             if (isset($entry['Ident']) && $entry['Ident'] === $Ident) return (string)$entry['Secret'];
         }
-        return "Nicht gefunden!";
+        return "";
     }
 
-    // --- Krypto ---
+    // --- Krypto-Logik (unverändert stabil) ---
 
     private function GetMasterKey(): string {
         $folder = $this->ReadPropertyString("KeyFolderPath");
@@ -90,7 +92,7 @@ class AttributeVaultTest extends IPSModule {
         $path = rtrim($folder, '/\\') . DIRECTORY_SEPARATOR . 'master.key';
         if (!file_exists($path)) {
             $key = bin2hex(random_bytes(16));
-            file_put_contents($path, $key);
+            @file_put_contents($path, $key);
             return $key;
         }
         return trim(file_get_contents($path));
@@ -103,16 +105,28 @@ class AttributeVaultTest extends IPSModule {
         $iv = random_bytes(12);
         $tag = "";
         $cipher = openssl_encrypt($plain, "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, $iv, $tag);
-        return json_encode(["iv" => bin2hex($iv), "tag" => bin2hex($tag), "data" => base64_encode($cipher)]);
+        return json_encode([
+            "iv" => bin2hex($iv),
+            "tag" => bin2hex($tag),
+            "data" => base64_encode($cipher)
+        ]);
     }
 
     private function DecryptData(string $encrypted): array {
-        if ($encrypted === "") return [];
+        if ($encrypted === "" || $encrypted === "[]") return [];
         $decoded = json_decode($encrypted, true);
-        if (!$decoded) return [];
+        if (!$decoded || !isset($decoded['data'])) return [];
         $keyHex = $this->GetMasterKey();
         if ($keyHex === "") return [];
-        $dec = openssl_decrypt(base64_decode($decoded['data']), "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, hex2bin($decoded['iv']), hex2bin($decoded['tag']));
+        
+        $dec = openssl_decrypt(
+            base64_decode($decoded['data']), 
+            "aes-128-gcm", 
+            hex2bin($keyHex), 
+            OPENSSL_RAW_DATA, 
+            hex2bin($decoded['iv']), 
+            hex2bin($decoded['tag'])
+        );
         return json_decode($dec, true) ?: [];
     }
 }
