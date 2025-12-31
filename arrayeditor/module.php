@@ -52,36 +52,40 @@ class AttributeVaultTest extends IPSModule {
      * WICHTIG: Der Parameter MUSS als 'string' deklariert sein,
      * damit IP-Symcon den Aufruf aus der UI akzeptiert.
      */
-    public function UpdateVault(string $VaultEditor): void {
+/**
+     * WICHTIG: Wir entfernen den Type Hint 'string', um den Fatal Error zu vermeiden.
+     * Das Objekt IPSList wird intern von PHP wie ein String oder ein Objekt behandelt.
+     * Die Warnung im Log "hat keinen Datentyp" kann für diesen Fall ignoriert werden.
+     */
+    public function UpdateVault($VaultEditor): void {
         
-        $this->SendDebug("UpdateVault", "Rohdaten empfangen: " . $VaultEditor, 0);
+        $this->SendDebug("UpdateVault", "Daten-Typ empfangen: " . gettype($VaultEditor), 0);
 
-        // 1. JSON-String in ein PHP-Array umwandeln
-        $data = json_decode($VaultEditor, true);
+        // 1. Umwandlung des IPSList-Objekts in ein Array
+        // Wir casten es zu einem String (erzeugt JSON) und decodieren es dann.
+        $data = json_decode((string)$VaultEditor, true);
 
-        // Prüfen, ob das Decoding erfolgreich war
+        // Validierung
         if (!is_array($data)) {
-            $this->SendDebug("UpdateVault", "FEHLER: JSON konnte nicht dekodiert werden.", 0);
-            echo "❌ Fehler: Ungültiges Datenformat empfangen!";
+            $this->SendDebug("UpdateVault", "FEHLER: Konnte IPSList nicht in Array umwandeln.", 0);
+            echo "❌ Fehler: Datenformat ungültig!";
             return;
         }
 
-        $this->SendDebug("UpdateVault", "Anzahl Zeilen nach Decoding: " . count($data), 0);
+        $this->SendDebug("UpdateVault", "Anzahl Zeilen: " . count($data), 0);
 
         // 2. Verschlüsseln
         $encryptedBlob = $this->EncryptData($data);
         
         if ($encryptedBlob === "") {
-            echo "❌ Fehler: Verschlüsselung fehlgeschlagen (Pfad/Key prüfen)!";
+            echo "❌ Fehler: Verschlüsselung fehlgeschlagen!";
             return;
         }
 
         // 3. In Attribut schreiben
         $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
         
-        $this->SendDebug("UpdateVault", "Erfolgreich im Attribut gespeichert.", 0);
-        
-        // Bestätigung für den User
+        $this->SendDebug("UpdateVault", "Erfolgreich gespeichert.");
         echo "✅ Tresor wurde mit " . count($data) . " Einträgen sicher verschlüsselt.";
     }
 
