@@ -7,33 +7,43 @@ class AttributeVaultTest extends IPSModule {
     public function Create() {
         parent::Create();
 
-        // Property für den Pfad zum Key (nicht geheim)
+        // Pfad zum master.key (Klartext-Property, da nicht geheim)
         $this->RegisterPropertyString("KeyFolderPath", "");
 
-        // ATTRIBUT für die verschlüsselten Daten (landet in settings.json, aber verschlüsselt)
+        // ATTRIBUT für die verschlüsselten Daten
+        // Attribute landen in der settings.json, werden aber von uns nur verschlüsselt befüllt.
         $this->RegisterAttributeString("EncryptedVault", "");
     }
 
     public function ApplyChanges() {
         parent::ApplyChanges();
+
+        // Status setzen: Wenn Pfad leer, dann Instanz inaktiv
+        if ($this->ReadPropertyString("KeyFolderPath") == "") {
+            $this->SetStatus(104); // IS_INACTIVE
+        } else {
+            $this->SetStatus(102); // IS_ACTIVE
+        }
     }
 
     /**
      * Baut das Formular dynamisch auf.
+     * Der Editor wird in den 'actions' Bereich verschoben, um Properties zu umgehen.
      */
     public function GetConfigurationForm(): string {
+        // Lade die statische Vorlage
         $form = json_decode(file_get_contents(__DIR__ . "/form.json"), true);
 
-        // 1. Daten aus Attribut laden und entschlüsseln
+        // 1. Daten aus dem Attribut laden und im RAM entschlüsseln
         $encrypted = $this->ReadAttributeString("EncryptedVault");
         $decryptedData = $this->DecryptData($encrypted);
 
-        // 2. Editor-Liste zu den ACTIONS hinzufügen
+        // 2. Den Editor als LISTE in den ACTIONS-Bereich injizieren
         $form['actions'][] = [
             "type" => "List",
             "name" => "VaultEditor",
-            "caption" => "Geheimnis-Tresor",
-            "rowCount" => 5,
+            "caption" => "Geheimnis-Tresor (Auto-Save via Attribute)",
+            "rowCount" => 8,
             "add" => true,
             "delete" => true,
             "columns" => [
@@ -41,16 +51,19 @@ class AttributeVaultTest extends IPSModule {
                     "caption" => "Bezeichnung",
                     "name" => "Ident",
                     "width" => "200px",
+                    "add" => "", // WICHTIG: Verhindert den "Could not add node" Fehler
                     "edit" => ["type" => "ValidationTextBox"]
                 ],
                 [
                     "caption" => "Geheimnis",
                     "name" => "Secret",
                     "width" => "auto",
+                    "add" => "", // WICHTIG: Verhindert den "Could not add node" Fehler
                     "edit" => ["type" => "PasswordTextBox"]
                 ]
             ],
             "values" => $decryptedData,
+            // Bei jeder Änderung wird sofort die Funktion UpdateVault aufgerufen
             "onChange" => "AVT_UpdateVault(\$id, \$VaultEditor);"
         ];
 
@@ -58,67 +71,96 @@ class AttributeVaultTest extends IPSModule {
     }
 
     /**
-     * Wird bei jeder Änderung in der Liste sofort aufgerufen.
+     * Diese Funktion wird vom UI-Event 'onChange' aufgerufen.
+     * Sie verschlüsselt die gesamte Liste und schreibt sie in das Attribut.
      */
     public function UpdateVault(array $VaultEditor): void {
-        // Die Liste kommt als Array von Objekten an
-        $jsonString = json_encode($VaultEditor);
+        // Daten verschlüsseln
+        $encryptedBlob = $this->EncryptData($VaultEditor);
         
-        // Verschlüsseln
-        $encrypted = $this->EncryptData($VaultEditor);
+        // In das interne Attribut schreiben
+        $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
         
-        // In Attribut speichern
-        $this->WriteAttributeString("EncryptedVault", $encrypted);
-        
-        // Optional für das Log:
-        // $this->LogMessage("Vault wurde aktualisiert und verschlüsselt gespeichert.", KL_MESSAGE);
+        // Optional: Logge die Änderung (ohne Klartext!)
+        // $this->LogMessage("Vault aktualisiert: " . count($VaultEditor) . " Einträge verschlüsselt gespeichert.", KL_MESSAGE);
     }
 
-    // --- HILFSFUNKTIONEN FÜR KRYPTO ---
+    // =========================================================================
+    // KRYPTOGRAPHIE HILFSFUNKTIONEN
+    // =========================================================================
 
+    /**
+     * Lädt den Schlüssel aus der Datei oder generiert einen neuen.
+     */
     private function GetMasterKey(): string {
-        $path = rtrim($this->ReadPropertyString("KeyFolderPath"), '/\\') . DIRECTORY_SEPARATOR . 'master.key';
+        $folder = $this->ReadPropertyString("KeyFolderPath");
+        if ($folder === "") return "";
+
+        $path = rtrim($folder, '/\\') . DIRECTORY_SEPARATOR . 'master.key';
+        
         if (!file_exists($path)) {
-            // Falls kein Key da ist, generieren wir einen (nur für Testzwecke hier direkt)
-            $newKey = bin2hex(random_bytes(16));
-            @file_put_contents($path, $newKey);
+            $newKey = bin2hex(random_bytes(16)); // 128-bit Key
+            if (@file_put_contents($path, $newKey) === false) {
+                throw new Exception("Schlüsseldatei konnte nicht erstellt werden. Pfad schreibgeschützt?");
+            }
             return $newKey;
         }
+        
         return trim(file_get_contents($path));
     }
 
+    /**
+     * AES-128-GCM Verschlüsselung
+     */
     private function EncryptData(array $data): string {
-        $key = hex2bin($this->GetMasterKey());
+        $masterKeyHex = $this->GetMasterKey();
+        if ($masterKeyHex === "") return "";
+
+        $key = hex2bin($masterKeyHex);
         $plain = json_encode($data);
-        $iv = random_bytes(12);
-        $tag = "";
         
-        $ciphertext = openssl_encrypt($plain, "aes-128-gcm", $key, 0, $iv, $tag);
+        $iv = random_bytes(12);
+        $tag = ""; // Wird von openssl_encrypt befüllt
+        
+        $ciphertext = openssl_encrypt($plain, "aes-128-gcm", $key, OPENSSL_RAW_DATA, $iv, $tag);
         
         return json_encode([
-            "iv" => bin2hex($iv),
-            "tag" => bin2hex($tag),
-            "data" => $ciphertext
+            "iv"   => bin2hex($iv),
+            "tag"  => bin2hex($tag),
+            "data" => base64_encode($ciphertext)
         ]);
     }
 
+    /**
+     * AES-128-GCM Entschlüsselung
+     */
     private function DecryptData(string $encrypted): array {
-        if ($encrypted === "") return [];
+        if ($encrypted === "" || $encrypted === "[]") return [];
         
         $decoded = json_decode($encrypted, true);
-        if (!$decoded) return [];
+        if (!$decoded || !isset($decoded['data'])) return [];
 
-        $key = hex2bin($this->GetMasterKey());
-        
-        $decrypted = openssl_decrypt(
-            $decoded['data'],
-            "aes-128-gcm",
-            $key,
-            0,
-            hex2bin($decoded['iv']),
-            hex2bin($decoded['tag'])
-        );
+        try {
+            $masterKeyHex = $this->GetMasterKey();
+            if ($masterKeyHex === "") return [];
 
-        return json_decode($decrypted, true) ?: [];
+            $key = hex2bin($masterKeyHex);
+            
+            $decrypted = openssl_decrypt(
+                base64_decode($decoded['data']),
+                "aes-128-gcm",
+                $key,
+                OPENSSL_RAW_DATA,
+                hex2bin($decoded['iv']),
+                hex2bin($decoded['tag'])
+            );
+
+            if ($decrypted === false) return [];
+
+            return json_decode($decrypted, true) ?: [];
+        } catch (Exception $e) {
+            $this->SendDebug("Decrypt Error", $e->getMessage(), 0);
+            return [];
+        }
     }
 }

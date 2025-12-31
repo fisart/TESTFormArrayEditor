@@ -2,18 +2,22 @@
     "elements": [
         {
             "type": "Label",
-            "caption": "Schlüssel-Konfiguration"
+            "caption": "Sicherheits-Konfiguration"
         },
         {
             "type": "ValidationTextBox",
             "name": "KeyFolderPath",
             "caption": "Ordner für master.key (z.B. /var/lib/symcon/)"
+        },
+        {
+            "type": "Label",
+            "caption": "Hinweis: Der Pfad muss für IP-Symcon schreibbar sein, damit der Schlüssel erzeugt werden kann."
         }
     ],
     "actions": [
         {
             "type": "Label",
-            "caption": "Der Editor unten speichert bei JEDER Änderung sofort verschlüsselt in ein Attribut."
+            "caption": "Verschlüsselter Tresor (Actions-Bereich):"
         }
     ]
 }
