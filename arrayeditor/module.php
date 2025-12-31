@@ -15,6 +15,8 @@ class AttributeVaultTest extends IPSModule {
     }
 
     public function GetConfigurationForm(): string {
+        $this->LogMessage("--- Formular-Laden (Nested) ---", KL_MESSAGE);
+
         // 1. Daten laden (Verschachteltes Array)
         $nestedData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         
@@ -22,7 +24,7 @@ class AttributeVaultTest extends IPSModule {
         $flatValues = [];
         $this->FlattenArray($nestedData, "", $flatValues);
 
-        return json_encode([
+        $form = [
             "elements" => [
                 ["type" => "ValidationTextBox", "name" => "KeyFolderPath", "caption" => "Ordner für master.key"]
             ],
@@ -30,7 +32,7 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "List",
                     "name" => "VaultEditor",
-                    "caption" => "Nested Tresor (Nutze '/' im Ident für Schachtelung)",
+                    "caption" => "Verschachtelter Tresor (Nutze '/' im Ident für Pfade)",
                     "rowCount" => 10,
                     "add" => true,
                     "delete" => true,
@@ -43,17 +45,23 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "Button",
                     "caption" => "🔓 Tresor verschlüsselt speichern",
-                    "onClick" => "NVM_UpdateVault(\$id, \$VaultEditor);"
+                    // WICHTIG: Prefix AVT muss zur module.json passen
+                    "onClick" => "AVT_UpdateVault(\$id, \$VaultEditor);"
                 ]
             ]
-        ]);
+        ];
+
+        return json_encode($form);
     }
 
     /**
-     * SPEICHERN: Baut aus den Pfaden wieder ein tief verschachteltes Array
+     * SPEICHERN: Baut aus den flachen Pfaden wieder ein tief verschachteltes Array
      */
     public function UpdateVault($VaultEditor): void {
+        $this->LogMessage("--- Start Speichern (Nested) ---", KL_MESSAGE);
+        
         $finalArray = [];
+        $count = 0;
 
         foreach ($VaultEditor as $row) {
             $path = (string)($row['Ident'] ?? '');
@@ -61,35 +69,34 @@ class AttributeVaultTest extends IPSModule {
 
             if ($path === "") continue;
 
-            // Hier passiert die Magie: Pfad in Stücke teilen
             $parts = explode('/', $path);
             $temp = &$finalArray;
 
             foreach ($parts as $part) {
-                if (!isset($temp[$part])) {
+                if (!isset($temp[$part]) || !is_array($temp[$part])) {
                     $temp[$part] = [];
                 }
                 $temp = &$temp[$part];
             }
-            // Am Ende des Pfads den Wert setzen
             $temp = $value;
+            $count++;
         }
 
         $encrypted = $this->EncryptData($finalArray);
         if ($encrypted !== "") {
             $this->WriteAttributeString("EncryptedVault", $encrypted);
-            $this->LogMessage("Verschachteltes Array gespeichert.", KL_MESSAGE);
+            $this->LogMessage("Nested Array gespeichert. Pfade verarbeitet: $count", KL_MESSAGE);
             echo "✅ Tresor gespeichert!";
         }
     }
 
     /**
      * API: Ermöglicht Zugriff auf tief geschachtelte Werte
-     * Beispiel: NVM_GetSecret($id, "Server/Web/Pass");
+     * Beispiel: AVT_GetSecret($id, "Netzwerk/Router/Admin");
      */
     public function GetSecret(string $Path): string {
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $parts = explode('/', $Ident);
+        $parts = explode('/', $Path);
         
         foreach ($parts as $part) {
             if (isset($data[$part])) {
@@ -98,7 +105,7 @@ class AttributeVaultTest extends IPSModule {
                 return "";
             }
         }
-        return is_string($data) ? $data : json_encode($data);
+        return is_string($data) ? $data : (json_encode($data) ?: "");
     }
 
     // =========================================================================
@@ -106,8 +113,9 @@ class AttributeVaultTest extends IPSModule {
     // =========================================================================
 
     private function FlattenArray($array, $prefix, &$result) {
+        if (!is_array($array)) return;
         foreach ($array as $key => $value) {
-            $fullKey = $prefix === "" ? $key : $prefix . "/" . $key;
+            $fullKey = ($prefix === "") ? (string)$key : $prefix . "/" . $key;
             if (is_array($value)) {
                 $this->FlattenArray($value, $fullKey, $result);
             } else {
