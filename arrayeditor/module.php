@@ -48,32 +48,41 @@ class AttributeVaultTest extends IPSModule {
      * WICHTIG: Das 'array' vor $VaultEditor wurde entfernt, 
      * da IP-Symcon hier oft einen JSON-String oder ein Objekt liefert.
      */
-    public function UpdateVault($VaultEditor): void {
-        // 1. Umwandlung: Wenn es ein String (JSON) ist, decodieren. Sonst als Array casten.
-        $data = is_string($VaultEditor) ? json_decode($VaultEditor, true) : (array)$VaultEditor;
+/**
+     * WICHTIG: Der Parameter MUSS als 'string' deklariert sein,
+     * damit IP-Symcon den Aufruf aus der UI akzeptiert.
+     */
+    public function UpdateVault(string $VaultEditor): void {
+        
+        $this->SendDebug("UpdateVault", "Rohdaten empfangen: " . $VaultEditor, 0);
 
-        // Validierung
+        // 1. JSON-String in ein PHP-Array umwandeln
+        $data = json_decode($VaultEditor, true);
+
+        // Prüfen, ob das Decoding erfolgreich war
         if (!is_array($data)) {
-            $this->SendDebug("UpdateVault", "Fehler: Daten konnten nicht in ein Array umgewandelt werden.", 0);
-            echo "❌ Fehler beim Verarbeiten der Daten!";
+            $this->SendDebug("UpdateVault", "FEHLER: JSON konnte nicht dekodiert werden.", 0);
+            echo "❌ Fehler: Ungültiges Datenformat empfangen!";
             return;
         }
 
-        $this->SendDebug("UpdateVault", "Empfangene Zeilen: " . count($data), 0);
+        $this->SendDebug("UpdateVault", "Anzahl Zeilen nach Decoding: " . count($data), 0);
 
         // 2. Verschlüsseln
         $encryptedBlob = $this->EncryptData($data);
         
         if ($encryptedBlob === "") {
-            echo "❌ Fehler: Verschlüsselung fehlgeschlagen!";
+            echo "❌ Fehler: Verschlüsselung fehlgeschlagen (Pfad/Key prüfen)!";
             return;
         }
 
         // 3. In Attribut schreiben
         $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
         
-        $this->SendDebug("UpdateVault", "Erfolgreich gespeichert.", 0);
-        echo "✅ Tresor erfolgreich verschlüsselt und gespeichert!";
+        $this->SendDebug("UpdateVault", "Erfolgreich im Attribut gespeichert.", 0);
+        
+        // Bestätigung für den User
+        echo "✅ Tresor wurde mit " . count($data) . " Einträgen sicher verschlüsselt.";
     }
 
     public function GetSecret(string $Ident): string {
