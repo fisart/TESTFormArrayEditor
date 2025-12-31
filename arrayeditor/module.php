@@ -12,61 +12,66 @@ class AttributeVaultTest extends IPSModule {
 
     public function ApplyChanges() {
         parent::ApplyChanges();
-        $this->SetStatus($this->ReadPropertyString("KeyFolderPath") == "" ? 104 : 102);
     }
 
     public function GetConfigurationForm(): string {
-        $this->SendDebug("UI_Update", "Lade Formular...", 0);
-        
-        $form = json_decode(file_get_contents(__DIR__ . "/form.json"), true);
-
-        // 1. Daten laden
-        $encrypted = $this->ReadAttributeString("EncryptedVault");
-        $this->SendDebug("UI_Load", "Rohdaten aus Attribut: " . $encrypted, 0);
-        
-        $decryptedData = $this->DecryptData($encrypted);
-        $this->SendDebug("UI_Load", "Entschlüsselte Einträge: " . count($decryptedData), 0);
-
-        // 2. Editor injizieren
-        $form['actions'][] = [
-            "type" => "List",
-            "name" => "VaultEditor",
-            "caption" => "Geheimnis-Tresor (Auto-Save)",
-            "rowCount" => 8,
-            "add" => true,
-            "delete" => true,
-            "columns" => [
-                ["caption" => "Bezeichnung", "name" => "Ident", "width" => "200px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
-                ["caption" => "Geheimnis", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "PasswordTextBox"]]
+        $form = [
+            "elements" => [
+                ["type" => "ValidationTextBox", "name" => "KeyFolderPath", "caption" => "Ordner für master.key"]
             ],
-            "values" => $decryptedData,
-            "onChange" => "AVT_UpdateVault(\$id, \$VaultEditor);"
+            "actions" => [
+                [
+                    "type" => "List",
+                    "name" => "VaultEditor",
+                    "caption" => "Geheimnis-Tresor",
+                    "rowCount" => 5,
+                    "add" => true,
+                    "delete" => true,
+                    "columns" => [
+                        ["caption" => "Ident", "name" => "Ident", "width" => "200px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
+                        ["caption" => "Secret", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "PasswordTextBox"]]
+                    ],
+                    "values" => $this->DecryptData($this->ReadAttributeString("EncryptedVault"))
+                ],
+                [
+                    "type" => "Button",
+                    "caption" => "🔓 Tresor jetzt verschlüsseln & speichern",
+                    "onClick" => "AVT_UpdateVault(\$id, \$VaultEditor);"
+                ],
+                [
+                    "type" => "Button",
+                    "caption" => "🔍 Test: Ident 'Test' auslesen",
+                    "onClick" => "echo AVT_GetSecret(\$id, 'Test');"
+                ]
+            ]
         ];
 
         return json_encode($form);
     }
 
     /**
-     * Kern-Funktion: Empfängt Daten aus der UI
+     * Diese Funktion wird durch den Button "Tresor jetzt verschlüsseln" aufgerufen.
      */
     public function UpdateVault(array $VaultEditor): void {
-        $this->SendDebug("UpdateVault", "Daten von UI empfangen. Anzahl Zeilen: " . count($VaultEditor), 0);
+        // 1. Notfall-Log ins Haupt-Meldungsfenster
+        IPS_LogMessage("SecretsManager", "UpdateVault wurde aufgerufen! Zeilen: " . count($VaultEditor));
         
-        if (count($VaultEditor) > 0) {
-            $this->SendDebug("UpdateVault", "Erster Ident: " . ($VaultEditor[0]['Ident'] ?? 'unbekannt'), 0);
-        }
+        // 2. Debug-Log (im Debug-Tab der Instanz)
+        $this->SendDebug("UpdateVault", "Empfangene Daten: " . json_encode($VaultEditor), 0);
 
-        // Verschlüsseln
+        // 3. Verschlüsseln
         $encryptedBlob = $this->EncryptData($VaultEditor);
         
         if ($encryptedBlob === "") {
-            $this->SendDebug("UpdateVault", "FEHLER: Verschlüsselung fehlgeschlagen (Key fehlt?)", 0);
+            $this->SendDebug("UpdateVault", "ERROR: Verschlüsselung schlug fehl!", 0);
             return;
         }
 
-        // In Attribut schreiben
+        // 4. In Attribut schreiben
         $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
-        $this->SendDebug("UpdateVault", "Verschlüsselter Blob im Attribut gespeichert.", 0);
+        $this->SendDebug("UpdateVault", "Erfolgreich im Attribut gespeichert.", 0);
+        
+        echo "✅ Tresor erfolgreich gespeichert!";
     }
 
     public function GetSecret(string $Ident): string {
@@ -74,90 +79,40 @@ class AttributeVaultTest extends IPSModule {
         foreach ($data as $entry) {
             if (isset($entry['Ident']) && $entry['Ident'] === $Ident) return (string)$entry['Secret'];
         }
-        return "";
+        return "Nicht gefunden!";
     }
 
-    // =========================================================================
-    // KRYPTO MIT DEBUGGING
-    // =========================================================================
+    // --- Krypto ---
 
     private function GetMasterKey(): string {
         $folder = $this->ReadPropertyString("KeyFolderPath");
-        if ($folder === "") {
-            $this->SendDebug("Crypto_Key", "Pfad leer!", 0);
-            return "";
-        }
+        if ($folder === "" || !is_dir($folder)) return "";
         $path = rtrim($folder, '/\\') . DIRECTORY_SEPARATOR . 'master.key';
-        
         if (!file_exists($path)) {
-            $newKey = bin2hex(random_bytes(16));
-            if (@file_put_contents($path, $newKey) === false) {
-                $this->SendDebug("Crypto_Key", "Konnte Key nicht schreiben auf: " . $path, 0);
-                return "";
-            }
-            $this->SendDebug("Crypto_Key", "Neuer Key generiert.", 0);
-            return $newKey;
+            $key = bin2hex(random_bytes(16));
+            file_put_contents($path, $key);
+            return $key;
         }
         return trim(file_get_contents($path));
     }
 
     private function EncryptData(array $data): string {
-        try {
-            $masterKeyHex = $this->GetMasterKey();
-            if ($masterKeyHex === "") return "";
-
-            $key = hex2bin($masterKeyHex);
-            $plain = json_encode($data);
-            $iv = random_bytes(12);
-            $tag = ""; 
-            
-            $ciphertext = openssl_encrypt($plain, "aes-128-gcm", $key, OPENSSL_RAW_DATA, $iv, $tag);
-            
-            $result = json_encode([
-                "iv"   => bin2hex($iv),
-                "tag"  => bin2hex($tag),
-                "data" => base64_encode($ciphertext)
-            ]);
-            
-            $this->SendDebug("Crypto_Encrypt", "Erfolgreich verschlüsselt.", 0);
-            return $result;
-        } catch (Exception $e) {
-            $this->SendDebug("Crypto_Encrypt", "Error: " . $e->getMessage(), 0);
-            return "";
-        }
+        $keyHex = $this->GetMasterKey();
+        if ($keyHex === "") return "";
+        $plain = json_encode($data);
+        $iv = random_bytes(12);
+        $tag = "";
+        $cipher = openssl_encrypt($plain, "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, $iv, $tag);
+        return json_encode(["iv" => bin2hex($iv), "tag" => bin2hex($tag), "data" => base64_encode($cipher)]);
     }
 
     private function DecryptData(string $encrypted): array {
-        if ($encrypted === "" || $encrypted === "[]") return [];
-        
+        if ($encrypted === "") return [];
         $decoded = json_decode($encrypted, true);
-        if (!$decoded || !isset($decoded['data'])) {
-            $this->SendDebug("Crypto_Decrypt", "Format ungültig oder leer.", 0);
-            return [];
-        }
-
-        try {
-            $masterKeyHex = $this->GetMasterKey();
-            if ($masterKeyHex === "") return [];
-
-            $decrypted = openssl_decrypt(
-                base64_decode($decoded['data']),
-                "aes-128-gcm",
-                hex2bin($masterKeyHex),
-                OPENSSL_RAW_DATA,
-                hex2bin($decoded['iv']),
-                hex2bin($decoded['tag'])
-            );
-
-            if ($decrypted === false) {
-                $this->SendDebug("Crypto_Decrypt", "Entschlüsselung fehlgeschlagen (falscher Key?)", 0);
-                return [];
-            }
-
-            return json_decode($decrypted, true) ?: [];
-        } catch (Exception $e) {
-            $this->SendDebug("Crypto_Decrypt", "Error: " . $e->getMessage(), 0);
-            return [];
-        }
+        if (!$decoded) return [];
+        $keyHex = $this->GetMasterKey();
+        if ($keyHex === "") return [];
+        $dec = openssl_decrypt(base64_decode($decoded['data']), "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, hex2bin($decoded['iv']), hex2bin($decoded['tag']));
+        return json_decode($dec, true) ?: [];
     }
 }
