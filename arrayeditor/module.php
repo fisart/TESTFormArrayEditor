@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-class NestedVaultManager extends IPSModule {
+class AttributeVaultTest extends IPSModule {
 
     public function Create() {
         parent::Create();
