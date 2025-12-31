@@ -49,7 +49,7 @@ class AttributeVaultTest extends IPSModule {
     }
 
     // =========================================================================
-    // ÖFFENTLICHE API (ZUM AUSLESEN)
+    // ÖFFENTLICHE API (ZUM AUSLESEN) vbvb
     // =========================================================================
 
     /**
