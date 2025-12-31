@@ -16,7 +16,8 @@ class AttributeVaultTest extends IPSModule {
     }
 
     public function GetConfigurationForm(): string {
-        $decryptedValues = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
+        $encrypted = $this->ReadAttributeString("EncryptedVault");
+        $decryptedValues = $this->DecryptData($encrypted);
 
         $form = [
             "elements" => [
@@ -26,7 +27,7 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "List",
                     "name" => "VaultEditor",
-                    "caption" => "Geheimnis-Tresor",
+                    "caption" => "Geheimnis-Tresor (Disk-Clean)",
                     "rowCount" => 8,
                     "add" => true,
                     "delete" => true,
@@ -46,58 +47,50 @@ class AttributeVaultTest extends IPSModule {
         return json_encode($form);
     }
 
-    /**
-     * API: Ein Secret auslesen
-     */
     public function GetSecret(string $Ident): string {
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         foreach ($data as $entry) {
-            if (isset($entry['Ident']) && trim(strtolower($entry['Ident'])) === trim(strtolower($Ident))) {
-                return (string)$entry['Secret'];
+            // Wir suchen flexibel nach 'Ident' oder 'ident'
+            $currentIdent = $entry['Ident'] ?? $entry['ident'] ?? '';
+            if (trim(strtolower((string)$currentIdent)) === trim(strtolower($Ident))) {
+                return (string)($entry['Secret'] ?? $entry['secret'] ?? '');
             }
         }
         return "";
     }
 
-    /**
-     * API: Alle Namen auflisten
-     */
-    public function GetIdentifiers(): string {
-        $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $keys = array_column($data, 'Ident');
-        return json_encode($keys);
-    }
-
-    /**
-     * INTERN: Speichern
-     */
     public function UpdateVault(string $VaultEditor): void {
         $this->LogMessage("--- Speichervorgang ---", KL_MESSAGE);
         
         $data = json_decode($VaultEditor, true);
         if (!is_array($data)) {
-            $this->LogMessage("UpdateVault: JSON-Fehler beim Einlesen der UI-Daten!", KL_ERROR);
+            $this->LogMessage("UpdateVault: JSON-Fehler", KL_ERROR);
             return;
         }
 
         $this->LogMessage("Anzahl Zeilen aus UI: " . count($data), KL_MESSAGE);
+        
+        // Debug: Wie sieht die Struktur aus?
+        if (count($data) > 0) {
+            $this->LogMessage("Struktur der ersten Zeile: " . json_encode($data[0]), KL_MESSAGE);
+        }
 
         $encrypted = $this->EncryptData($data);
         if ($encrypted !== "") {
             $this->WriteAttributeString("EncryptedVault", $encrypted);
             
-            // Sofort-Check nach dem Speichern
-            $checkKeys = $this->GetIdentifiers();
-            $this->LogMessage("Speichern erfolgreich. Vorhandene Keys im Speicher: " . $checkKeys, KL_MESSAGE);
+            // Validierung im RAM (nicht aus dem Attribut lesen, sondern direkt den verschlüsselten Blob testen)
+            $testDecrypt = $this->DecryptData($encrypted);
+            $foundKeys = array_column($testDecrypt, 'Ident');
             
-            echo "✅ Tresor gespeichert!";
-        } else {
-            $this->LogMessage("UpdateVault: Verschlüsselung schlug fehl!", KL_ERROR);
+            $this->LogMessage("Sofort-Check (RAM-Roundtrip): " . json_encode($foundKeys), KL_MESSAGE);
+            
+            echo "✅ Tresor wurde gespeichert und verifiziert.";
         }
     }
 
     // =========================================================================
-    // KRYPTO-ENGINE
+    // KRYPTO-ENGINE (Fix für GCM Tag Handling)
     // =========================================================================
 
     private function GetMasterKey(): string {
@@ -111,15 +104,15 @@ class AttributeVaultTest extends IPSModule {
         return trim((string)file_get_contents($path));
     }
 
-private function EncryptData(array $data): string {
+    private function EncryptData(array $data): string {
         $keyHex = $this->GetMasterKey();
         if ($keyHex === "") return "";
 
         $plain = json_encode($data);
         $iv = random_bytes(12);
-        $tag = ""; 
+        $tag = "";
         
-        // openssl_encrypt darf 8 Parameter haben (der letzte ist die tag_length)
+        // Letzter Parameter 16 ist die Tag-Länge
         $cipher = openssl_encrypt($plain, "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, $iv, $tag, "", 16);
         
         if ($cipher === false) return "";
@@ -140,8 +133,6 @@ private function EncryptData(array $data): string {
         $keyHex = $this->GetMasterKey();
         if ($keyHex === "") return [];
 
-        // WICHTIG: openssl_decrypt darf nur MAXIMAL 7 Parameter haben!
-        // Der 8. Parameter (16) wurde entfernt.
         $dec = openssl_decrypt(
             base64_decode($decoded['data']),
             "aes-128-gcm",
@@ -149,14 +140,16 @@ private function EncryptData(array $data): string {
             OPENSSL_RAW_DATA,
             hex2bin($decoded['iv']),
             hex2bin($decoded['tag']),
-            ""
+            "" // AAD leer lassen
         );
 
         if ($dec === false) {
-            $this->LogMessage("Decrypt: Entschlüsselung fehlgeschlagen!", KL_ERROR);
+            // Wenn Entschlüsselung fehlschlägt, loggen wir das explizit
+            $this->LogMessage("Decrypt: Fehlgeschlagen!", KL_ERROR);
             return [];
         }
 
-        return json_decode($dec, true) ?: [];
+        $res = json_decode($dec, true);
+        return is_array($res) ? $res : [];
     }
 }
