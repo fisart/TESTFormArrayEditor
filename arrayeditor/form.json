@@ -1,72 +1,19 @@
 {
     "elements": [
         {
-            "type": "List",
-            "name": "Entries",
-            "caption": "Password Repository",
-            "add": true,
-            "delete": true,
-            "sort": {
-                "column": "Key",
-                "direction": "ascending"
-            },
-            "columns": [
-                {
-                    "name": "Key",
-                    "caption": "Identifier/Key",
-                    "width": "150px",
-                    "add": "NewKey",
-                    "edit": {
-                        "type": "ValidationTextBox"
-                    }
-                },
-                {
-                    "name": "User",
-                    "caption": "Username",
-                    "width": "150px",
-                    "add": "",
-                    "edit": {
-                        "type": "ValidationTextBox"
-                    }
-                },
-                {
-                    "name": "PW",
-                    "caption": "Password",
-                    "width": "150px",
-                    "add": "",
-                    "edit": {
-                        "type": "ValidationTextBox" 
-                    }
-                },
-                {
-                    "name": "URL",
-                    "caption": "URL",
-                    "width": "200px",
-                    "add": "",
-                    "edit": {
-                        "type": "ValidationTextBox"
-                    }
-                },
-                {
-                    "name": "Location",
-                    "caption": "Location",
-                    "width": "100px",
-                    "add": "",
-                    "edit": {
-                        "type": "ValidationTextBox"
-                    }
-                },
-                {
-                    "name": "IP",
-                    "caption": "IP Address",
-                    "width": "120px",
-                    "add": "",
-                    "edit": {
-                        "type": "ValidationTextBox"
-                    }
-                }
-            ]
+            "type": "Label",
+            "caption": "Schlüssel-Konfiguration"
+        },
+        {
+            "type": "ValidationTextBox",
+            "name": "KeyFolderPath",
+            "caption": "Ordner für master.key (z.B. /var/lib/symcon/)"
+        }
+    ],
+    "actions": [
+        {
+            "type": "Label",
+            "caption": "Der Editor unten speichert bei JEDER Änderung sofort verschlüsselt in ein Attribut."
         }
     ]
 }
-
