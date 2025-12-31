@@ -163,4 +163,27 @@ class AttributeVaultTest extends IPSModule {
             return [];
         }
     }
+
+    /**
+     * Liest ein einzelnes Geheimnis anhand der Bezeichnung aus.
+     * Aufrufbar via: AVT_GetSecret($id, "MeineBezeichnung");
+     */
+    public function GetSecret(string $Ident): string {
+        // 1. Verschlüsselten Tresor aus dem Attribut laden
+        $encrypted = $this->ReadAttributeString("EncryptedVault");
+        
+        // 2. Entschlüsseln (nutzt die vorhandene DecryptData Funktion)
+        $data = $this->DecryptData($encrypted);
+        
+        // 3. Nach dem Ident suchen
+        foreach ($data as $entry) {
+            if (isset($entry['Ident']) && $entry['Ident'] === $Ident) {
+                return (string)$entry['Secret'];
+            }
+        }
+        
+        // Wenn nichts gefunden wurde
+        $this->LogMessage("Geheimnis mit Ident '$Ident' wurde nicht gefunden.", KL_WARNING);
+        return "";
+    }
 }
