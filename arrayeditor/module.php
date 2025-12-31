@@ -15,10 +15,6 @@ class AttributeVaultTest extends IPSModule {
         $this->SetStatus($this->ReadPropertyString("KeyFolderPath") == "" ? 104 : 102);
     }
 
-    /**
-     * WICHTIG: In der GetConfigurationForm nutzen wir im onClick 
-     * die PHP-Funktion json_encode(), um das Listen-Objekt in einen String zu wandeln.
-     */
     public function GetConfigurationForm(): string {
         $form = [
             "elements" => [
@@ -45,7 +41,6 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "Button",
                     "caption" => "🔓 Tresor jetzt verschlüsseln & speichern",
-                    // HIER DIE KORREKTUR: json_encode (PHP) statt JSON.stringify (JS)
                     "onClick" => "AVT_UpdateVault(\$id, json_encode(\$VaultEditor));"
                 ]
             ]
@@ -55,15 +50,12 @@ class AttributeVaultTest extends IPSModule {
     }
 
     /**
-     * Da die UI jetzt via json_encode einen String schickt, 
-     * können wir hier 'string' als Datentyp erzwingen. 
-     * Das entfernt die PHPLibrary-Warnung im Log.
+     * WICHTIG: SendDebug benötigt immer DREI Parameter.
      */
     public function UpdateVault(string $VaultEditor): void {
         
         $this->SendDebug("UpdateVault", "Empfangener JSON-String: " . $VaultEditor, 0);
 
-        // Umwandlung in PHP-Array
         $data = json_decode($VaultEditor, true);
 
         if (!is_array($data)) {
@@ -83,7 +75,8 @@ class AttributeVaultTest extends IPSModule {
         // Speichern
         $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
         
-        $this->SendDebug("UpdateVault", "Erfolgreich gespeichert.");
+        // HIER WAR DER FEHLER: Die '0' am Ende fehlte
+        $this->SendDebug("UpdateVault", "Erfolgreich gespeichert.", 0);
         echo "✅ Tresor wurde sicher verschlüsselt und gespeichert!";
     }
 
@@ -95,7 +88,7 @@ class AttributeVaultTest extends IPSModule {
         return "";
     }
 
-    // --- Krypto-Logik ---
+    // --- Krypto ---
 
     private function GetMasterKey(): string {
         $folder = $this->ReadPropertyString("KeyFolderPath");
