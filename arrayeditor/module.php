@@ -57,24 +57,29 @@ class AttributeVaultTest extends IPSModule {
      * Das Objekt IPSList wird intern von PHP wie ein String oder ein Objekt behandelt.
      * Die Warnung im Log "hat keinen Datentyp" kann für diesen Fall ignoriert werden.
      */
+/**
+     * WICHTIG: Kein Datentyp (Type Hint) im Parameter!
+     * Das verhindert den Fatal Error beim Aufruf durch IPS.
+     */
     public function UpdateVault($VaultEditor): void {
         
-        $this->SendDebug("UpdateVault", "Daten-Typ empfangen: " . gettype($VaultEditor), 0);
+        $this->SendDebug("UpdateVault", "Start der Verarbeitung...", 0);
 
-        // 1. Umwandlung des IPSList-Objekts in ein Array
-        // Wir casten es zu einem String (erzeugt JSON) und decodieren es dann.
-        $data = json_decode((string)$VaultEditor, true);
+        // 1. Umwandlung IPSList -> JSON-String -> PHP-Array
+        // Wir nutzen json_encode, da das IPSList-Objekt JsonSerializable ist.
+        $json = json_encode($VaultEditor);
+        $data = json_decode($json, true);
 
         // Validierung
         if (!is_array($data)) {
-            $this->SendDebug("UpdateVault", "FEHLER: Konnte IPSList nicht in Array umwandeln.", 0);
-            echo "❌ Fehler: Datenformat ungültig!";
+            $this->SendDebug("UpdateVault", "FEHLER: Konnte IPSList nicht dekodieren. Roh: " . $json, 0);
+            echo "❌ Fehler: Daten konnten nicht verarbeitet werden!";
             return;
         }
 
-        $this->SendDebug("UpdateVault", "Anzahl Zeilen: " . count($data), 0);
+        $this->SendDebug("UpdateVault", "Anzahl Zeilen im Tresor: " . count($data), 0);
 
-        // 2. Verschlüsseln
+        // 2. Verschlüsselung (deine bestehende Logik)
         $encryptedBlob = $this->EncryptData($data);
         
         if ($encryptedBlob === "") {
@@ -82,11 +87,13 @@ class AttributeVaultTest extends IPSModule {
             return;
         }
 
-        // 3. In Attribut schreiben
+        // 3. Speichern im Attribut
         $this->WriteAttributeString("EncryptedVault", $encryptedBlob);
         
-        $this->SendDebug("UpdateVault", "Erfolgreich gespeichert.");
-        echo "✅ Tresor wurde mit " . count($data) . " Einträgen sicher verschlüsselt.";
+        $this->SendDebug("UpdateVault", "Speichern erfolgreich abgeschlossen.");
+        
+        // Popup-Bestätigung für dich
+        echo "✅ Tresor wurde mit " . count($data) . " Einträgen sicher gespeichert.";
     }
 
     public function GetSecret(string $Ident): string {
