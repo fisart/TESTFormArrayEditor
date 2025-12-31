@@ -111,15 +111,15 @@ class AttributeVaultTest extends IPSModule {
         return trim((string)file_get_contents($path));
     }
 
-    private function EncryptData(array $data): string {
+private function EncryptData(array $data): string {
         $keyHex = $this->GetMasterKey();
         if ($keyHex === "") return "";
 
         $plain = json_encode($data);
         $iv = random_bytes(12);
-        $tag = ""; // Wird von PHP befüllt
+        $tag = ""; 
         
-        // GCM Verschlüsselung
+        // openssl_encrypt darf 8 Parameter haben (der letzte ist die tag_length)
         $cipher = openssl_encrypt($plain, "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, $iv, $tag, "", 16);
         
         if ($cipher === false) return "";
@@ -140,6 +140,8 @@ class AttributeVaultTest extends IPSModule {
         $keyHex = $this->GetMasterKey();
         if ($keyHex === "") return [];
 
+        // WICHTIG: openssl_decrypt darf nur MAXIMAL 7 Parameter haben!
+        // Der 8. Parameter (16) wurde entfernt.
         $dec = openssl_decrypt(
             base64_decode($decoded['data']),
             "aes-128-gcm",
@@ -147,8 +149,7 @@ class AttributeVaultTest extends IPSModule {
             OPENSSL_RAW_DATA,
             hex2bin($decoded['iv']),
             hex2bin($decoded['tag']),
-            "",
-            16
+            ""
         );
 
         if ($dec === false) {
