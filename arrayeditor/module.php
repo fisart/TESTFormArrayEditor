@@ -6,9 +6,9 @@ class AttributeVaultTest extends IPSModule {
 
     public function Create() {
         parent::Create();
-        // Pfad für den Schlüssel
+        // Pfad für den master.key (Klartext-Property)
         $this->RegisterPropertyString("KeyFolderPath", "");
-        // Verschlüsselter Container im Attribut (Disk-Clean)
+        // Verschlüsselter Tresor im Attribut (Disk-Clean)
         $this->RegisterAttributeString("EncryptedVault", "");
     }
 
@@ -18,15 +18,9 @@ class AttributeVaultTest extends IPSModule {
     }
 
     public function GetConfigurationForm(): string {
-        $this->LogMessage("--- FORMULAR-LADEN ---", KL_MESSAGE);
-        
-        $encrypted = $this->ReadAttributeString("EncryptedVault");
-        $this->LogMessage("Lese Attribut 'EncryptedVault'. Länge: " . strlen($encrypted), KL_MESSAGE);
+        $decryptedValues = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
 
-        $decryptedValues = $this->DecryptData($encrypted);
-        $this->LogMessage("Entschlüsselte Zeilen für UI: " . count($decryptedValues), KL_MESSAGE);
-
-        $form = [
+        return json_encode([
             "elements" => [
                 ["type" => "ValidationTextBox", "name" => "KeyFolderPath", "caption" => "Ordner für master.key"]
             ],
@@ -34,7 +28,7 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "List",
                     "name" => "VaultEditor",
-                    "caption" => "Geheimnis-Tresor (Deep-Debug / Disk-Clean)",
+                    "caption" => "Geheimnis-Tresor (Verschlüsselt)",
                     "rowCount" => 8,
                     "add" => true,
                     "delete" => true,
@@ -47,41 +41,57 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "Button",
                     "caption" => "🔓 Tresor verschlüsseln & speichern",
-                    // Wir senden das IPSList Objekt direkt an PHP
+                    // WICHTIG: Wir übergeben das Objekt direkt. In PHP iterieren wir manuell.
                     "onClick" => "AVT_UpdateVault(\$id, \$VaultEditor);"
                 ]
             ]
-        ];
-        return json_encode($form);
+        ]);
     }
 
     // =========================================================================
-    // ÖFFENTLICHE API FÜR SKRIPTE
+    // ÖFFENTLICHE API (ZUM AUSLESEN)
     // =========================================================================
 
     /**
      * Liest ein Geheimnis aus einem Skript aus.
-     * Beispiel: $pass = AVT_GetSecret($id, "WLAN_Key");
+     * Beispiel: $pass = AVT_GetSecret($id, "artur");
      */
     public function GetSecret(string $Ident): string {
+        $this->LogMessage("GetSecret Suche nach: " . $Ident, KL_MESSAGE);
+        
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
+        
         foreach ($data as $entry) {
-            // Prüfung Case-Insensitive und Trimmed
-            $currentIdent = $entry['Ident'] ?? '';
-            if (trim(strtolower((string)$currentIdent)) === trim(strtolower($Ident))) {
-                return (string)($entry['Secret'] ?? '');
+            // Wir prüfen alle Varianten der Schreibweise (Ident / ident)
+            $rowIdent = $entry['Ident'] ?? $entry['ident'] ?? '';
+            
+            if (trim(strtolower((string)$rowIdent)) === trim(strtolower($Ident))) {
+                // Wir haben den Ident gefunden! Jetzt den Wert (Secret / secret)
+                $val = $entry['Secret'] ?? $entry['secret'] ?? '';
+                
+                if ($val === "") {
+                    // Debug-Log, falls wir zwar den Ident finden, aber das Secret leer ist
+                    $this->LogMessage("Ident '$Ident' gefunden, aber Secret ist leer! Keys in diesem Array: " . implode(", ", array_keys($entry)), KL_WARNING);
+                } else {
+                    $this->LogMessage("Treffer für '$Ident' gefunden.", KL_MESSAGE);
+                }
+                return (string)$val;
             }
         }
+        
+        $this->LogMessage("Kein Treffer für Ident '$Ident' im Tresor.", KL_WARNING);
         return "";
     }
 
     /**
-     * Listet alle Namen (Idents) im Tresor auf.
-     * Beispiel: $keys = AVT_GetIdentifiers($id);
+     * Gibt alle Namen im Tresor als JSON-Array zurück.
      */
     public function GetIdentifiers(): string {
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $keys = array_column($data, 'Ident');
+        $keys = [];
+        foreach ($data as $entry) {
+            $keys[] = $entry['Ident'] ?? $entry['ident'] ?? 'unbekannt';
+        }
         return json_encode($keys);
     }
 
@@ -92,48 +102,32 @@ class AttributeVaultTest extends IPSModule {
     public function UpdateVault($VaultEditor): void {
         $this->LogMessage("--- START SPEICHERN ---", KL_MESSAGE);
         
-        $type = gettype($VaultEditor);
-        $this->LogMessage("Datentyp von UI: " . $type, KL_MESSAGE);
-
         $data = [];
-        try {
-            $count = 0;
-            // Manuelle Iteration durch das IPSList-Objekt
-            foreach ($VaultEditor as $index => $row) {
-                $count++;
-                $ident = $row['Ident'] ?? 'FEHLT';
-                $secret = $row['Secret'] ?? 'FEHLT';
-                
-                $this->LogMessage("Zeile $index: Ident=[$ident]", KL_MESSAGE);
-                
+        // WICHTIG: Manuelle Iteration durch das IPSList-Objekt behebt den Datenverlust
+        foreach ($VaultEditor as $index => $row) {
+            $ident = $row['Ident'] ?? $row['ident'] ?? '';
+            $secret = $row['Secret'] ?? $row['secret'] ?? '';
+            
+            if ($ident !== "") {
+                $this->LogMessage("Speichere Zeile $index: Ident=[$ident]", KL_MESSAGE);
                 $data[] = [
                     'Ident'  => (string)$ident,
                     'Secret' => (string)$secret
                 ];
             }
-            $this->LogMessage("Wandlung fertig. Zeilen: $count", KL_MESSAGE);
-        } catch (Throwable $e) {
-            $this->LogMessage("FEHLER bei Wandlung: " . $e->getMessage(), KL_ERROR);
         }
 
         if (count($data) === 0) {
-            $this->LogMessage("Abbruch: Keine Daten gefunden.", KL_WARNING);
-            echo "Fehler: Liste leer.";
+            $this->LogMessage("Speichern abgebrochen: Keine Daten zum Verschlüsseln vorhanden.", KL_WARNING);
+            echo "Fehler: Liste ist leer.";
             return;
         }
 
         $encrypted = $this->EncryptData($data);
         if ($encrypted !== "") {
             $this->WriteAttributeString("EncryptedVault", $encrypted);
-            
-            // Verifizierung
-            $verify = $this->ReadAttributeString("EncryptedVault");
-            $this->LogMessage("Gespeichert. Attribut-Länge: " . strlen($verify), KL_MESSAGE);
-            
-            echo "✅ Erfolgreich verschlüsselt und gespeichert.";
-        } else {
-            $this->LogMessage("FEHLER: Verschlüsselung schlug fehl!", KL_ERROR);
-            echo "Verschlüsselungsfehler!";
+            $this->LogMessage("Tresor erfolgreich im Attribut gespeichert. Anzahl Zeilen: " . count($data), KL_MESSAGE);
+            echo "✅ Tresor wurde sicher verschlüsselt und gespeichert.";
         }
     }
 
@@ -144,7 +138,7 @@ class AttributeVaultTest extends IPSModule {
     private function GetMasterKey(): string {
         $folder = $this->ReadPropertyString("KeyFolderPath");
         if ($folder === "" || !is_dir($folder)) {
-            $this->LogMessage("Key-Error: Pfad ungültig: $folder", KL_ERROR);
+            $this->LogMessage("Krypto-Key: Pfad ungültig: " . $folder, KL_ERROR);
             return "";
         }
         $path = rtrim($folder, '/\\') . DIRECTORY_SEPARATOR . 'master.key';
@@ -158,20 +152,43 @@ class AttributeVaultTest extends IPSModule {
     private function EncryptData(array $data): string {
         $keyHex = $this->GetMasterKey();
         if ($keyHex === "") return "";
+        
         $plain = json_encode($data);
         $iv = random_bytes(12);
         $tag = "";
         $cipher = openssl_encrypt($plain, "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, $iv, $tag, "", 16);
-        return ($cipher === false) ? "" : json_encode(["iv" => bin2hex($iv), "tag" => bin2hex($tag), "data" => base64_encode($cipher)]);
+        
+        return ($cipher === false) ? "" : json_encode([
+            "iv"   => bin2hex($iv),
+            "tag"  => bin2hex($tag),
+            "data" => base64_encode($cipher)
+        ]);
     }
 
     private function DecryptData(string $encrypted): array {
         if ($encrypted === "" || $encrypted === "[]") return [];
+        
         $decoded = json_decode($encrypted, true);
-        if (!$decoded || !isset($decoded['data'])) return [];
+        if (!$decoded || !isset($decoded['data'], $decoded['iv'], $decoded['tag'])) return [];
+
         $keyHex = $this->GetMasterKey();
         if ($keyHex === "") return [];
-        $dec = openssl_decrypt(base64_decode($decoded['data']), "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, hex2bin($decoded['iv']), hex2bin($decoded['tag']), "");
-        return json_decode($dec ?: '[]', true) ?: [];
+
+        $dec = openssl_decrypt(
+            base64_decode($decoded['data']),
+            "aes-128-gcm",
+            hex2bin($keyHex),
+            OPENSSL_RAW_DATA,
+            hex2bin($decoded['iv']),
+            hex2bin($decoded['tag']),
+            ""
+        );
+
+        if ($dec === false) {
+            $this->LogMessage("Decrypt: Entschlüsselung fehlgeschlagen!", KL_ERROR);
+            return [];
+        }
+
+        return json_decode($dec, true) ?: [];
     }
 }
