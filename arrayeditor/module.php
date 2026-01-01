@@ -15,15 +15,11 @@ class AttributeVaultTest extends IPSModule {
         $this->SetStatus($this->ReadPropertyString("KeyFolderPath") == "" ? 104 : 102);
     }
 
-    /**
-     * DYNAMISCHES FORMULAR FÜR KONZEPT 2 (Akkordeon)
-     */
     public function GetConfigurationForm(): string {
         $this->LogMessage("--- Akkordeon-Editor: Lade Panels ---", KL_MESSAGE);
 
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         
-        // Grundgerüst
         $form = [
             "elements" => [
                 ["type" => "ValidationTextBox", "name" => "KeyFolderPath", "caption" => "Ordner für master.key"]
@@ -31,27 +27,30 @@ class AttributeVaultTest extends IPSModule {
             "actions" => []
         ];
 
-        // 1. Kategorien (Top-Level) als Panels aufbauen
-        ksort($data); // Alphabetisch sortieren
+        ksort($data); 
         foreach ($data as $category => $content) {
             
-            // Unterelemente für diese Kategorie flachklopfen (Pfade innerhalb der Kategorie)
             $flatValues = [];
             if (is_array($content)) {
                 $this->FlattenArray($content, "", $flatValues);
             } else {
-                // Falls es ein direkter Wert im Root war
                 $flatValues[] = ["Ident" => ".", "Secret" => (string)$content];
             }
 
-            // Panel für die Kategorie erstellen
+            // Wir nutzen einen Hash für den Listennamen (sicher gegen Sonderzeichen)
+            $hash = md5($category);
+            $listName = "List_" . $hash;
+            
+            // WICHTIG: Kategoriename für den Button-Befehl Base64 kodieren
+            $b64Cat = base64_encode($category);
+
             $form['actions'][] = [
                 "type" => "ExpansionPanel",
                 "caption" => "📁 " . $category . " (" . count($flatValues) . " Einträge)",
                 "items" => [
                     [
                         "type" => "List",
-                        "name" => "List_" . md5($category), // Eindeutiger Name für die Liste
+                        "name" => $listName,
                         "rowCount" => 6,
                         "add" => true,
                         "delete" => true,
@@ -64,49 +63,38 @@ class AttributeVaultTest extends IPSModule {
                     [
                         "type" => "Button",
                         "caption" => "💾 Änderungen für '" . $category . "' speichern",
-                        "onClick" => "AVT_UpdateCategory(\$id, '$category', \${'List_' . md5($category)});"
+                        // Wir übergeben den Namen Base64-kodiert an PHP
+                        "onClick" => "AVT_UpdateCategory(\$id, '$b64Cat', \$$listName);"
                     ],
                     [
                         "type" => "Button",
-                        "caption" => "🗑️ Gesamte Kategorie '" . $category . "' löschen",
-                        "onClick" => "AVT_DeleteCategory(\$id, '$category');"
+                        "caption" => "🗑️ Gesamte Kategorie löschen",
+                        "onClick" => "AVT_DeleteCategory(\$id, '$b64Cat');"
                     ]
                 ]
             ];
         }
 
-        // 2. Bereich zum Hinzufügen einer neuen Kategorie
         $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
         $form['actions'][] = ["type" => "Label", "caption" => "➕ Neue Hauptkategorie anlegen", "bold" => true];
-        $form['actions'][] = [
-            "type" => "ValidationTextBox",
-            "name" => "NewCategoryName",
-            "caption" => "Name der neuen Gruppe (z.B. FB-DSL)",
-            "value" => ""
-        ];
-        $form['actions'][] = [
-            "type" => "Button",
-            "caption" => "Gruppe erstellen",
-            "onClick" => "AVT_AddCategory(\$id, \$NewCategoryName);"
-        ];
+        $form['actions'][] = ["type" => "ValidationTextBox", "name" => "NewCategoryName", "caption" => "Name der neuen Gruppe", "value" => ""];
+        $form['actions'][] = ["type" => "Button", "caption" => "Gruppe erstellen", "onClick" => "AVT_AddCategory(\$id, \$NewCategoryName);"];
 
-        // 3. Import Bereich (wie zuvor)
         $form['actions'][] = ["type" => "Label", "caption" => "📥 JSON IMPORT", "bold" => true];
         $form['actions'][] = ["type" => "ValidationTextBox", "name" => "ImportInput", "caption" => "JSON String hier einfügen", "value" => ""];
-        $form['actions'][] = [
-            "type" => "Button",
-            "caption" => "JSON importieren & überschreiben",
-            "onClick" => "AVT_ImportJson(\$id, \$ImportInput);"
-        ];
+        $form['actions'][] = ["type" => "Button", "caption" => "JSON importieren", "onClick" => "AVT_ImportJson(\$id, \$ImportInput);"];
 
         return json_encode($form);
     }
 
     // =========================================================================
-    // SPEICHER-AKTIONEN
+    // SPEICHER-AKTIONEN (JETZT MIT BASE64 DECODE)
     // =========================================================================
 
-    public function UpdateCategory(string $Category, $ListData): void {
+    public function UpdateCategory(string $CategoryBase64, $ListData): void {
+        $category = base64_decode($CategoryBase64);
+        $this->LogMessage("Update für Kategorie: " . $category, KL_MESSAGE);
+
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         
         $newCategoryContent = [];
@@ -118,7 +106,6 @@ class AttributeVaultTest extends IPSModule {
             if ($path === ".") {
                 $newCategoryContent = $val;
             } else {
-                // Pfad-Logik für Unter-Verschachtelung
                 $parts = explode('/', $path);
                 $temp = &$newCategoryContent;
                 foreach ($parts as $part) {
@@ -129,10 +116,21 @@ class AttributeVaultTest extends IPSModule {
             }
         }
 
-        $masterData[$Category] = $newCategoryContent;
+        $masterData[$category] = $newCategoryContent;
         $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
         $this->ReloadForm();
-        echo "✅ Gruppe '$Category' gespeichert!";
+        echo "✅ '$category' gespeichert!";
+    }
+
+    public function DeleteCategory(string $CategoryBase64): void {
+        $category = base64_decode($CategoryBase64);
+        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
+        if (isset($masterData[$category])) {
+            unset($masterData[$category]);
+            $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
+            $this->ReloadForm();
+            echo "🗑️ '$category' gelöscht.";
+        }
     }
 
     public function AddCategory(string $Name): void {
@@ -140,15 +138,6 @@ class AttributeVaultTest extends IPSModule {
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         if (!isset($masterData[$Name])) {
             $masterData[$Name] = [];
-            $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
-            $this->ReloadForm();
-        }
-    }
-
-    public function DeleteCategory(string $Name): void {
-        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        if (isset($masterData[$Name])) {
-            unset($masterData[$Name]);
             $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
             $this->ReloadForm();
         }
@@ -172,7 +161,7 @@ class AttributeVaultTest extends IPSModule {
         $parts = explode('/', $Path);
         $current = $data;
         foreach ($parts as $part) {
-            if (is_array($current) && isset($current[$part])) { $current = $current[$part]; } 
+            if (isset($current[$part])) { $current = $current[$part]; } 
             else { return ""; }
         }
         return is_string($current) ? $current : json_encode($current);
