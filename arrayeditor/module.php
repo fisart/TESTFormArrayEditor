@@ -12,15 +12,14 @@ class AttributeVaultTest extends IPSModule {
         $this->RegisterAttributeString("SelectedRecord", ""); 
     }
 
-    public function ApplyChanges() {
-        parent::ApplyChanges();
-    }
-
     public function GetConfigurationForm(): string {
+        $this->LogMessage("--- Formular-Laden ---", KL_MESSAGE);
+        
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $currentPath = $this->ReadAttributeString("CurrentPath");
         $selectedRecord = $this->ReadAttributeString("SelectedRecord");
         
+        // 1. Navigation zum Pfad im Array
         $displayData = $data;
         if ($currentPath !== "") {
             foreach (explode('/', $currentPath) as $part) {
@@ -28,10 +27,12 @@ class AttributeVaultTest extends IPSModule {
             }
         }
 
+        // 2. Liste aufbauen (Folder vs. Records)
         $masterList = [];
         if (is_array($displayData)) {
             ksort($displayData);
             foreach ($displayData as $key => $value) {
+                if ($key === "__folder") continue;
                 $isFolder = $this->CheckIfFolder($value);
                 $masterList[] = [
                     "Icon"  => $isFolder ? "📁" : "🔑",
@@ -54,15 +55,20 @@ class AttributeVaultTest extends IPSModule {
             ]
         ];
 
+        // ZURÜCK-BUTTON (Immer sichtbar wenn nicht im Root)
         if ($currentPath !== "") {
-            $form['actions'][] = ["type" => "Button", "caption" => "⬅️ Zurück", "onClick" => "IPS_RequestAction(\$id, 'NavigateUp', '');"];
+            $form['actions'][] = [
+                "type" => "Button",
+                "caption" => "⬅️ ZURÜCK (Ebene höher)",
+                "onClick" => "AVT_NavigateUp(\$id);"
+            ];
         }
 
-        // Master-Liste mit Support-Trick (Konvertierung vor dem Senden)
+        // DIE HAUPTLISTE
         $form['actions'][] = [
             "type" => "List",
             "name" => "MasterListUI",
-            "caption" => "Inhalt (Klick auf Zeile zum Öffnen/Editieren)",
+            "caption" => "Inhalt (KLICKEN zum Öffnen oder Editieren)",
             "rowCount" => 8,
             "columns" => [
                 ["caption" => " ", "name" => "Icon", "width" => "35px"],
@@ -70,16 +76,17 @@ class AttributeVaultTest extends IPSModule {
                 ["caption" => "Typ", "name" => "Type", "width" => "120px"]
             ],
             "values" => $masterList,
-            "onClick" => "IPS_RequestAction(\$id, 'HandleClick', json_encode(\$MasterListUI));"
+            // Wir nutzen die Instanz-Funktion für den Klick
+            "onClick" => "AVT_HandleClick(\$id, \$MasterListUI);"
         ];
 
-        // Erstellen
-        $form['actions'][] = ["type" => "Label", "caption" => "➕ Neues Element erstellen:"];
+        // ERSTELLUNGS-BEREICH
+        $form['actions'][] = ["type" => "Label", "caption" => "➕ Neues Element HIER erstellen:"];
         $form['actions'][] = ["type" => "ValidationTextBox", "name" => "NewItemName", "caption" => "Name", "value" => ""];
-        $form['actions'][] = ["type" => "Button", "caption" => "📁 Ordner anlegen", "onClick" => "IPS_RequestAction(\$id, 'CreateFolder', \$NewItemName);"];
-        $form['actions'][] = ["type" => "Button", "caption" => "🔑 Record anlegen", "onClick" => "IPS_RequestAction(\$id, 'CreateRecord', \$NewItemName);"];
+        $form['actions'][] = ["type" => "Button", "caption" => "📁 Unterordner anlegen", "onClick" => "AVT_CreateItem(\$id, \$NewItemName, 'Folder');"];
+        $form['actions'][] = ["type" => "Button", "caption" => "🔑 Gerät/Record anlegen", "onClick" => "AVT_CreateItem(\$id, \$NewItemName, 'Record');"];
 
-        // Detail-Panel
+        // DETAIL-EDITOR (Nur für Records)
         if ($selectedRecord !== "") {
             $recordPath = ($currentPath === "") ? $selectedRecord : $currentPath . "/" . $selectedRecord;
             $fields = $this->GetNestedValue($data, $recordPath);
@@ -103,138 +110,153 @@ class AttributeVaultTest extends IPSModule {
                         "add" => true,
                         "delete" => true,
                         "columns" => [
-                            ["caption" => "Feldname", "name" => "Key", "width" => "200px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
-                            ["caption" => "Wert", "name" => "Value", "width" => "auto", "add" => "", "edit" => ["type" => "ValidationTextBox"]]
+                            ["caption" => "Feld", "name" => "Key", "width" => "200px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
+                            ["caption" => "Inhalt", "name" => "Value", "width" => "auto", "add" => "", "edit" => ["type" => "ValidationTextBox"]]
                         ],
                         "values" => $detailValues
                     ],
-                    ["type" => "Button", "caption" => "💾 Speichern", "onClick" => "\$D=[]; foreach(\$DetailListUI as \$r){ \$D[]=\$r; } IPS_RequestAction(\$id, 'SaveRecord', json_encode(\$D));"],
-                    ["type" => "Button", "caption" => "🗑️ Löschen", "onClick" => "IPS_RequestAction(\$id, 'DeleteItem', '');"]
+                    ["type" => "Button", "caption" => "💾 Details speichern", "onClick" => "AVT_SaveRecord(\$id, \$DetailListUI);"],
+                    ["type" => "Button", "caption" => "🗑️ Löschen", "onClick" => "AVT_DeleteItem(\$id, '$selectedRecord');"]
                 ]
             ];
         }
 
-        // IMPORT WIEDER DA
+        // IMPORT
         $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
-        $form['actions'][] = ["type" => "Label", "caption" => "📥 JSON IMPORT", "bold" => true];
-        $form['actions'][] = ["type" => "ValidationTextBox", "name" => "ImportInput", "caption" => "JSON String hier einfügen", "value" => ""];
-        $form['actions'][] = ["type" => "Button", "caption" => "Importieren & Verschlüsseln", "onClick" => "IPS_RequestAction(\$id, 'ImportJson', \$ImportInput);"];
+        $form['actions'][] = ["type" => "ValidationTextBox", "name" => "ImportInput", "caption" => "JSON Import", "value" => ""];
+        $form['actions'][] = ["type" => "Button", "caption" => "Importieren", "onClick" => "AVT_ImportJson(\$id, \$ImportInput);"];
 
         return json_encode($form);
     }
 
-    public function RequestAction($Ident, $Value) {
-        switch ($Ident) {
-            case "HandleClick":
-                $row = json_decode($Value, true);
-                $this->HandleClickAction($row);
-                break;
-            case "NavigateUp":
-                $this->NavigateUpAction();
-                break;
-            case "SaveRecord":
-                $this->SaveRecordAction(json_decode($Value, true));
-                break;
-            case "CreateFolder":
-                $this->CreateItemAction($Value, 'Folder');
-                break;
-            case "CreateRecord":
-                $this->CreateItemAction($Value, 'Record');
-                break;
-            case "DeleteItem":
-                $this->DeleteItemAction();
-                break;
-            case "ImportJson":
-                $this->ImportJsonAction($Value);
-                break;
-            default:
-                throw new Exception("Unbekannter Ident: $Ident");
-        }
-    }
+    // =========================================================================
+    // INTERAKTION & NAVIGATION
+    // =========================================================================
 
-    private function HandleClickAction($row) {
-        $ident = (string)($row['Ident'] ?? '');
-        $type = (string)($row['Type'] ?? '');
+    public function HandleClick($Row): void {
+        $ident = (string)($Row['Ident'] ?? '');
+        $type  = (string)($Row['Type'] ?? '');
+
+        $this->LogMessage("Click auf: $ident ($type)", KL_MESSAGE);
+
         if ($ident === "") return;
 
         if ($type === "Folder") {
             $current = $this->ReadAttributeString("CurrentPath");
             $this->WriteAttributeString("CurrentPath", ($current === "") ? $ident : $current . "/" . $ident);
-            $this->WriteAttributeString("SelectedRecord", "");
+            $this->WriteAttributeString("SelectedRecord", ""); // Editor schließen
         } else {
+            // Record für Detail-Panel auswählen
             $this->WriteAttributeString("SelectedRecord", $ident);
         }
         $this->ReloadForm();
     }
 
-    private function ImportJsonAction($input) {
-        $data = json_decode($input, true);
-        if (is_array($data)) {
-            $this->WriteAttributeString("EncryptedVault", $this->EncryptData($data));
-            $this->WriteAttributeString("CurrentPath", "");
-            $this->WriteAttributeString("SelectedRecord", "");
-            $this->ReloadForm();
-            echo "✅ Import erfolgreich!";
-        }
-    }
-
-    private function SaveRecordAction($inputList) {
-        $currentPath = $this->ReadAttributeString("CurrentPath");
-        $selectedRecord = $this->ReadAttributeString("SelectedRecord");
-        $fullPath = ($currentPath === "") ? $selectedRecord : $currentPath . "/" . $selectedRecord;
-        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $newFields = [];
-        foreach ($inputList as $row) { if ($row['Key'] !== "") $newFields[(string)$row['Key']] = (string)$row['Value']; }
-        $parts = explode('/', $fullPath); $temp = &$masterData;
-        foreach ($parts as $part) { if (!isset($temp[$part]) || !is_array($temp[$part])) $temp[$part] = []; $temp = &$temp[$part]; }
-        $temp = $newFields;
-        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
-        $this->ReloadForm();
-        echo "✅ Gespeichert!";
-    }
-
-    private function CreateItemAction($name, $type) {
-        if ($name === "") return;
-        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $currentPath = $this->ReadAttributeString("CurrentPath");
-        $temp = &$masterData;
-        if ($currentPath !== "") { foreach (explode('/', $currentPath) as $part) { if (!isset($temp[$part])) $temp[$part] = []; $temp = &$temp[$part]; } }
-        if ($type === 'Folder') { $temp[$name] = ["__folder" => true]; } 
-        else { $temp[$name] = ["User" => "", "PW" => ""]; $this->WriteAttributeString("SelectedRecord", $name); }
-        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
-        $this->ReloadForm();
-    }
-
-    private function DeleteItemAction() {
-        $currentPath = $this->ReadAttributeString("CurrentPath");
-        $selectedRecord = $this->ReadAttributeString("SelectedRecord");
-        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $parts = explode('/', $currentPath); $temp = &$masterData;
-        foreach ($parts as $part) { if ($part !== "") $temp = &$temp[$part]; }
-        unset($temp[$selectedRecord]);
-        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
-        $this->WriteAttributeString("SelectedRecord", "");
-        $this->ReloadForm();
-    }
-
-    private function NavigateUpAction() {
+    public function NavigateUp(): void {
         $current = $this->ReadAttributeString("CurrentPath");
-        $parts = explode('/', $current); array_pop($parts);
+        if ($current === "") return;
+        
+        $parts = explode('/', $current);
+        array_pop($parts);
+        
         $this->WriteAttributeString("CurrentPath", implode('/', $parts));
         $this->WriteAttributeString("SelectedRecord", "");
         $this->ReloadForm();
     }
 
+    // =========================================================================
+    // SPEICHER-AKTIONEN
+    // =========================================================================
+
+    public function CreateItem(string $Name, string $Type): void {
+        if ($Name === "") return;
+        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
+        $currentPath = $this->ReadAttributeString("CurrentPath");
+
+        $temp = &$masterData;
+        if ($currentPath !== "") {
+            foreach (explode('/', $currentPath) as $part) {
+                if (!isset($temp[$part]) || !is_array($temp[$part])) $temp[$part] = [];
+                $temp = &$temp[$part];
+            }
+        }
+
+        if ($Type === 'Folder') {
+            $temp[$Name] = ["__folder" => true];
+        } else {
+            $temp[$Name] = ["User" => "", "PW" => ""];
+            $this->WriteAttributeString("SelectedRecord", $Name);
+        }
+
+        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
+        $this->ReloadForm();
+    }
+
+    public function SaveRecord($DetailList): void {
+        $currentPath = $this->ReadAttributeString("CurrentPath");
+        $selectedRecord = $this->ReadAttributeString("SelectedRecord");
+        $fullPath = ($currentPath === "") ? $selectedRecord : $currentPath . "/" . $selectedRecord;
+
+        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
+        
+        $newFields = [];
+        foreach ($DetailList as $row) {
+            if ($row['Key'] !== "") $newFields[(string)$row['Key']] = (string)$row['Value'];
+        }
+
+        $parts = explode('/', $fullPath);
+        $temp = &$masterData;
+        foreach ($parts as $part) {
+            if (!isset($temp[$part]) || !is_array($temp[$part])) $temp[$part] = [];
+            $temp = &$temp[$part];
+        }
+        $temp = $newFields;
+
+        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
+        $this->ReloadForm();
+        echo "✅ Gespeichert!";
+    }
+
+    public function DeleteItem(string $Name): void {
+        $currentPath = $this->ReadAttributeString("CurrentPath");
+        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
+        $temp = &$masterData;
+        if ($currentPath !== "") {
+            foreach (explode('/', $currentPath) as $part) { $temp = &$temp[$part]; }
+        }
+        unset($temp[$Name]);
+        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
+        $this->WriteAttributeString("SelectedRecord", "");
+        $this->ReloadForm();
+    }
+
+    public function ImportJson(string $Input): void {
+        $data = json_decode($Input, true);
+        if (is_array($data)) {
+            $this->WriteAttributeString("EncryptedVault", $this->EncryptData($data));
+            $this->WriteAttributeString("CurrentPath", "");
+            $this->WriteAttributeString("SelectedRecord", "");
+            $this->ReloadForm();
+        }
+    }
+
+    // =========================================================================
+    // HELFER (RECORDBILDUNG & KRYPTO)
+    // =========================================================================
+
     private function CheckIfFolder($value): bool {
         if (!is_array($value)) return false;
         if (isset($value['__folder'])) return true;
+        // Wenn es ein Array ist, das wiederum Arrays enthält -> Folder
         foreach ($value as $v) { if (is_array($v)) return true; }
         return false;
     }
 
     private function GetNestedValue($array, $path) {
         $parts = explode('/', $path);
-        foreach ($parts as $part) { if (isset($array[$part])) $array = $array[$part]; else return null; }
+        foreach ($parts as $part) {
+            if (isset($array[$part])) $array = $array[$part]; else return null;
+        }
         return $array;
     }
 
