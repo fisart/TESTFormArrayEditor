@@ -17,11 +17,10 @@ class AttributeVaultTest extends IPSModule {
     }
 
     public function GetConfigurationForm(): string {
-        $encrypted = $this->ReadAttributeString("EncryptedVault");
-        $data = $this->DecryptData($encrypted);
+        $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $currentPath = $this->ReadAttributeString("CurrentPath");
         
-        // Navigation zum aktuellen Pfad im Array
+        // Navigation zum aktuellen Pfad
         $displayData = $data;
         if ($currentPath !== "") {
             $parts = explode('/', $currentPath);
@@ -29,13 +28,12 @@ class AttributeVaultTest extends IPSModule {
                 if (isset($displayData[$part]) && is_array($displayData[$part])) {
                     $displayData = $displayData[$part];
                 } else {
-                    $displayData = []; // Pfad existiert nicht mehr
+                    $displayData = [];
                     break;
                 }
             }
         }
 
-        // Liste für die UI vorbereiten
         $listValues = [];
         if (is_array($displayData)) {
             foreach ($displayData as $key => $value) {
@@ -75,11 +73,17 @@ class AttributeVaultTest extends IPSModule {
                     "columns" => [
                         ["caption" => " ", "name" => "Icon", "width" => "35px", "add" => "🔑"],
                         ["caption" => "Name", "name" => "Name", "width" => "250px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
-                        ["caption" => "Inhalt / Passwort", "name" => "Value", "width" => "auto", "add" => "", "edit" => ["type" => "PasswordTextBox"]],
+                        [
+                            "caption" => "Inhalt / Passwort", 
+                            "name" => "Value", 
+                            "width" => "auto", 
+                            "add" => "", 
+                            "edit" => ["type" => "ValidationTextBox"] // Geändert von Password zu Validation für Sichtbarkeit
+                        ],
                         [
                             "caption" => "Typ", 
                             "name" => "Type", 
-                            "width" => "120px", 
+                            "width" => "150px", 
                             "add" => "Wert", 
                             "edit" => [
                                 "type" => "Select",
@@ -99,7 +103,7 @@ class AttributeVaultTest extends IPSModule {
                 ],
                 [
                     "type" => "Label",
-                    "caption" => "Markieren Sie einen Ordner und klicken Sie auf 'Ordner öffnen'."
+                    "caption" => "Markieren Sie einen Ordner (📁) und klicken Sie auf 'Ordner öffnen'."
                 ],
                 [
                     "type" => "Button",
@@ -118,7 +122,7 @@ class AttributeVaultTest extends IPSModule {
 
     public function NavigateDown(string $Target, string $Type): void {
         if ($Type !== "Ordner") {
-            echo "Dies ist kein Ordner.";
+            echo "Dies ist kein Ordner und kann nicht geöffnet werden.";
             return;
         }
         $current = $this->ReadAttributeString("CurrentPath");
@@ -136,19 +140,17 @@ class AttributeVaultTest extends IPSModule {
     }
 
     // =========================================================================
-    // SPEICHERLOGIK (MIT DEBUG-LOGS)
+    // SPEICHERN
     // =========================================================================
 
     public function UpdateLevel($ExplorerList): void {
-        // 1. Gesamtdaten laden
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $currentPath = $this->ReadAttributeString("CurrentPath");
 
-        // 2. Ziel-Zweig finden (Referenzbildung)
+        // Pointer auf die aktuelle Ebene setzen
         $temp = &$masterData;
         if ($currentPath !== "") {
-            $parts = explode('/', $currentPath);
-            foreach ($parts as $part) {
+            foreach (explode('/', $currentPath) as $part) {
                 if (!isset($temp[$part]) || !is_array($temp[$part])) {
                     $temp[$part] = [];
                 }
@@ -156,7 +158,6 @@ class AttributeVaultTest extends IPSModule {
             }
         }
 
-        // 3. Neue Daten für diese Ebene aufbauen
         $newList = [];
         foreach ($ExplorerList as $row) {
             $name = (string)($row['Name'] ?? '');
@@ -166,36 +167,32 @@ class AttributeVaultTest extends IPSModule {
             $val  = (string)($row['Value'] ?? '');
 
             if ($type === "Ordner") {
-                // Wenn es schon ein Ordner war, Inhalt behalten, sonst neues Array
+                // Bestehenden Inhalt behalten, falls es schon ein Ordner war, sonst leeres Array
                 $newList[$name] = (isset($temp[$name]) && is_array($temp[$name])) ? $temp[$name] : [];
             } else {
                 $newList[$name] = $val;
             }
         }
 
-        // 4. Die aktuelle Ebene im Master-Array ersetzen
+        // Ebene im Master-Array ersetzen
         $temp = $newList;
 
-        // 5. PRÜFUNG: Gesamtes Array als JSON im Meldungsfenster ausgeben
-        $fullJson = json_encode($masterData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-        $this->LogMessage("--- TRESOR-STRUKTUR VOR VERSCHLÜSSELUNG ---", KL_MESSAGE);
-        $this->LogMessage($fullJson, KL_MESSAGE);
+        // --- DEBUG AUSGABE ---
+        $jsonCheck = json_encode($masterData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+        $this->LogMessage("--- TRESOR STRUKTUR VOR SPEICHERUNG ---", KL_MESSAGE);
+        $this->LogMessage($jsonCheck, KL_MESSAGE);
 
-        // 6. Verschlüsseln und Speichern
+        // Verschlüsseln und Speichern
         $encrypted = $this->EncryptData($masterData);
         if ($encrypted !== "") {
             $this->WriteAttributeString("EncryptedVault", $encrypted);
-            $this->LogMessage("ERFOLG: Tresor verschlüsselt gespeichert.", KL_MESSAGE);
-            echo "✅ Ebene erfolgreich gespeichert!";
             $this->ReloadForm();
-        } else {
-            $this->LogMessage("FEHLER: Verschlüsselung schlug fehl!", KL_ERROR);
-            echo "❌ Fehler beim Verschlüsseln!";
+            echo "✅ Ebene gespeichert!";
         }
     }
 
     // =========================================================================
-    // KRYPTO-ENGINE (BEWÄHRT)
+    // KRYPTO (BEWÄHRT)
     // =========================================================================
 
     private function GetMasterKey(): string {
@@ -203,31 +200,26 @@ class AttributeVaultTest extends IPSModule {
         if ($folder === "" || !is_dir($folder)) return "";
         $path = rtrim($folder, '/\\') . DIRECTORY_SEPARATOR . 'master.key';
         if (!file_exists($path)) {
-            $key = bin2hex(random_bytes(16));
-            file_put_contents($path, $key);
-            return $key;
+            file_put_contents($path, bin2hex(random_bytes(16)));
         }
         return trim((string)file_get_contents($path));
     }
 
     private function EncryptData(array $data): string {
-        $keyHex = $this->GetMasterKey();
-        if ($keyHex === "") return "";
-        $plain = json_encode($data);
+        $key = $this->GetMasterKey();
+        if ($key === "") return "";
         $iv = random_bytes(12);
         $tag = "";
-        $cipher = openssl_encrypt($plain, "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, $iv, $tag, "", 16);
-        if ($cipher === false) return "";
+        $cipher = openssl_encrypt(json_encode($data), "aes-128-gcm", hex2bin($key), OPENSSL_RAW_DATA, $iv, $tag, "", 16);
         return json_encode(["iv" => bin2hex($iv), "tag" => bin2hex($tag), "data" => base64_encode($cipher)]);
     }
 
     private function DecryptData(string $encrypted): array {
         if ($encrypted === "" || $encrypted === "[]") return [];
         $decoded = json_decode($encrypted, true);
-        if (!$decoded || !isset($decoded['data'], $decoded['iv'], $decoded['tag'])) return [];
-        $keyHex = $this->GetMasterKey();
-        if ($keyHex === "") return [];
-        $dec = openssl_decrypt(base64_decode($decoded['data']), "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, hex2bin($decoded['iv']), hex2bin($decoded['tag']), "");
+        $key = $this->GetMasterKey();
+        if (!$decoded || $key === "") return [];
+        $dec = openssl_decrypt(base64_decode($decoded['data']), "aes-128-gcm", hex2bin($key), OPENSSL_RAW_DATA, hex2bin($decoded['iv']), hex2bin($decoded['tag']), "");
         return json_decode($dec ?: '[]', true) ?: [];
     }
 }
