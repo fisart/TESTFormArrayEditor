@@ -38,7 +38,7 @@ class AttributeVaultTest extends IPSModule {
                 [
                     "type" => "List",
                     "name" => "VaultEditor",
-                    "caption" => "Nested Tresor (Disk-Clean / RequestAction)",
+                    "caption" => "Nested Tresor (Speichert automatisch bei Änderung)",
                     "rowCount" => 10,
                     "add" => true,
                     "delete" => true,
@@ -46,12 +46,13 @@ class AttributeVaultTest extends IPSModule {
                         ["caption" => "Pfad (Ident)", "name" => "Ident", "width" => "300px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
                         ["caption" => "Wert (Secret)", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "PasswordTextBox"]]
                     ],
-                    "values" => $flatValues
+                    "values" => $flatValues,
+                    // NEU: onChange statt Button. Speichert bei jeder Änderung der Liste.
+                    "onChange" => "IPS_RequestAction(\$id, 'SaveVault', json_encode(\$VaultEditor));"
                 ],
                 [
-                    "type" => "Button",
-                    "caption" => "🔓 Tresor verschlüsseln & speichern",
-                    "onClick" => "IPS_RequestAction(\$id, 'SaveVault', json_encode(\$VaultEditor));"
+                    "type" => "Label",
+                    "caption" => "Info: Änderungen in der Liste werden sofort automatisch verschlüsselt gespeichert."
                 ]
             ]
         ];
@@ -67,7 +68,7 @@ class AttributeVaultTest extends IPSModule {
 
         switch ($Ident) {
             case "SaveVault":
-                // VORSCHLAG 2: Wir loggen das Ergebnis von print_r, um den exakten Typ zu sehen
+                // Debugging: Was kommt an?
                 $this->LogMessage("Inhalt RAW: " . print_r($Value, true), KL_MESSAGE);
                 
                 $data = json_decode((string)$Value, true);
@@ -103,6 +104,7 @@ class AttributeVaultTest extends IPSModule {
             $secret = (string)($row['Secret'] ?? $row['secret'] ?? '');
 
             if ($path === "") {
+                // Das Log lassen wir drin, um zu sehen, ob leere Pfade das Problem sind
                 $this->LogMessage("Überspringe Zeile: Ident (Pfad) ist leer.", KL_MESSAGE);
                 continue;
             }
@@ -127,8 +129,6 @@ class AttributeVaultTest extends IPSModule {
             
             $verify = $this->ReadAttributeString("EncryptedVault");
             $this->LogMessage("ERFOLG: Tresor gespeichert. Attribut-Länge auf Disk: " . strlen($verify), KL_MESSAGE);
-            
-            echo "✅ Tresor erfolgreich gespeichert!";
         } else {
             $this->LogMessage("FEHLER: Verschlüsselung lieferte kein Ergebnis!", KL_ERROR);
         }
