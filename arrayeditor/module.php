@@ -67,13 +67,18 @@ class AttributeVaultTest extends IPSModule {
 
         switch ($Ident) {
             case "SaveVault":
-                // NEU: Diese Zeile zeigt uns den exakten Inhalt der Liste aus der UI
                 $this->LogMessage("Inhalt JSON: " . $Value, KL_MESSAGE);
                 
-                $this->LogMessage("Empfangener JSON-String (Länge): " . strlen((string)$Value), KL_MESSAGE);
-                
                 $data = json_decode((string)$Value, true);
+                
                 if (is_array($data)) {
+                    // NORMALISIERUNG: Falls nur ein einzelnes Objekt {} geschickt wurde, 
+                    // packen wir es in ein Array [{}], damit der Loop funktioniert.
+                    if (isset($data['Ident'])) {
+                        $this->LogMessage("Info: Einzelne Zeile erkannt, konvertiere zu Liste.", KL_MESSAGE);
+                        $data = [$data];
+                    }
+                    
                     $this->ProcessSaveVault($data);
                 } else {
                     $this->LogMessage("FEHLER: JSON-Daten konnten nicht dekodiert werden!", KL_ERROR);
@@ -94,10 +99,14 @@ class AttributeVaultTest extends IPSModule {
         $finalNestedArray = [];
         $count = 0;
         foreach ($inputList as $row) {
-            $path = (string)($row['Ident'] ?? '');
-            $secret = (string)($row['Secret'] ?? '');
+            // Spaltennamen prüfen (manche IPS Versionen senden klein geschriebene Keys)
+            $path = (string)($row['Ident'] ?? $row['ident'] ?? '');
+            $secret = (string)($row['Secret'] ?? $row['secret'] ?? '');
 
-            if ($path === "") continue;
+            if ($path === "") {
+                $this->LogMessage("Überspringe Zeile: Ident (Pfad) ist leer.", KL_MESSAGE);
+                continue;
+            }
 
             $parts = explode('/', $path);
             $temp = &$finalNestedArray;
@@ -111,7 +120,7 @@ class AttributeVaultTest extends IPSModule {
             $count++;
         }
 
-        $this->LogMessage("Struktur aufgebaut. Starte Verschlüsselung...", KL_MESSAGE);
+        $this->LogMessage("Struktur aufgebaut. Gültige Zeilen: $count. Starte Verschlüsselung...", KL_MESSAGE);
 
         $encrypted = $this->EncryptData($finalNestedArray);
         if ($encrypted !== "") {
