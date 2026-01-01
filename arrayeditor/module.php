@@ -8,7 +8,7 @@ class AttributeVaultTest extends IPSModule {
         parent::Create();
         $this->RegisterPropertyString("KeyFolderPath", "");
         $this->RegisterAttributeString("EncryptedVault", "{}");
-        $this->RegisterAttributeString("CurrentPath", ""); // Speichert z.B. "RASPI/Sonos"
+        $this->RegisterAttributeString("SelectedIdent", ""); // Merkt sich die aktuelle Auswahl
     }
 
     public function ApplyChanges() {
@@ -17,104 +17,98 @@ class AttributeVaultTest extends IPSModule {
     }
 
     public function GetConfigurationForm(): string {
+        $this->LogMessage("--- Master-Detail Editor: Lade Ansicht ---", KL_MESSAGE);
+
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $currentPath = $this->ReadAttributeString("CurrentPath");
+        $selectedIdent = $this->ReadAttributeString("SelectedIdent");
         
+        // 1. Master-Liste aufbereiten (Alle Pfade zu Records finden)
+        $masterList = [];
+        $records = [];
+        $this->FindAllRecords($data, "", $records);
+        
+        foreach ($records as $path => $fields) {
+            $masterList[] = [
+                "Ident" => $path,
+                "Info"  => count($fields) . " Felder hinterlegt"
+            ];
+        }
+
         $form = [
             "elements" => [
                 ["type" => "ValidationTextBox", "name" => "KeyFolderPath", "caption" => "Ordner für master.key"]
             ],
-            "actions" => []
+            "actions" => [
+                [
+                    "type" => "Label",
+                    "caption" => "🔍 1. Eintrag auswählen",
+                    "bold" => true
+                ],
+                [
+                    "type" => "List",
+                    "name" => "MasterListUI",
+                    "caption" => "Alle Geräte / Accounts",
+                    "rowCount" => 6,
+                    "columns" => [
+                        ["caption" => "Name / Pfad", "name" => "Ident", "width" => "auto"],
+                        ["caption" => "Details", "name" => "Info", "width" => "150px"]
+                    ],
+                    "values" => $masterList,
+                    "onClick" => "AVT_SelectRecord(\$id, \$MasterListUI['Ident']);"
+                ],
+                [
+                    "type" => "Button",
+                    "caption" => "➕ Neuen Eintrag anlegen",
+                    "onClick" => "AVT_CreateNewRecord(\$id);"
+                ]
+            ]
         ];
 
-        ksort($data); 
-        foreach ($data as $category => $content) {
-            
-            // Bestimmen, ob dieser Panel-Pfad gerade fokussiert ist
-            $pathParts = explode('/', $currentPath);
-            $isActive = ($pathParts[0] === $category);
-            $subPath = $isActive ? substr($currentPath, strlen($category) + 1) : "";
-
-            // Daten für dieses Panel filtern
-            $displayData = $content;
-            if ($isActive && $subPath !== "") {
-                foreach (explode('/', $subPath) as $part) {
-                    if (isset($displayData[$part]) && is_array($displayData[$part])) {
-                        $displayData = $displayData[$part];
-                    }
+        // 2. Detail-Bereich (Nur sichtbar, wenn ein Ident ausgewählt ist)
+        if ($selectedIdent !== "") {
+            $currentFields = $this->GetNestedValue($data, $selectedIdent) ?: [];
+            $detailValues = [];
+            foreach ($currentFields as $k => $v) {
+                if (!is_array($v)) {
+                    $detailValues[] = ["Key" => $k, "Value" => (string)$v];
                 }
             }
 
-            $flatValues = [];
-            $this->FlattenLevel($displayData, $flatValues);
-
-            $hash = md5($category);
-            $listName = "List_" . $hash;
-            $b64Cat = base64_encode($category);
-
-            $panelItems = [];
-            
-            // Breadcrumb innerhalb des Panels
-            $panelItems[] = [
-                "type" => "Label", 
-                "caption" => "📍 Pfad: " . $category . ($subPath !== "" ? " / " . str_replace("/", " / ", $subPath) : ""),
-                "italic" => true
-            ];
-
-            // Zurück-Button innerhalb des Panels
-            if ($subPath !== "") {
-                $panelItems[] = [
-                    "type" => "Button",
-                    "caption" => "⬅️ Eine Ebene nach oben",
-                    "onClick" => "AVT_NavigateUp(\$id);"
-                ];
-            }
-
-            $panelItems[] = [
-                "type" => "List",
-                "name" => $listName,
-                "rowCount" => 8,
-                "add" => true,
-                "delete" => true,
-                "columns" => [
-                    ["caption" => " ", "name" => "Icon", "width" => "35px", "add" => "🔑"],
-                    ["caption" => "Name (Feld/Ordner)", "name" => "Ident", "width" => "300px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
-                    ["caption" => "Wert", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
-                    [
-                        "caption" => "Typ", "name" => "Type", "width" => "120px", "add" => "Wert", 
-                        "edit" => ["type" => "Select", "options" => [
-                            ["caption" => "Wert / Passwort", "value" => "Wert"],
-                            ["caption" => "Ordner (Container)", "value" => "Ordner"]
-                        ]]
-                    ]
-                ],
-                "values" => $flatValues
-            ];
-
-            $panelItems[] = [
-                "type" => "Button",
-                "caption" => "💾 Speichern",
-                "onClick" => "AVT_UpdateCategory(\$id, '$b64Cat', \$$listName);"
-            ];
-
-            $panelItems[] = [
-                "type" => "Button",
-                "caption" => "📂 Unterordner öffnen",
-                "onClick" => "if (isset(\${$listName})) { AVT_NavigateDown(\$id, '$category', \${$listName}['Ident'], \${$listName}['Type']); } else { echo 'Kein Ordner gewählt'; }"
-            ];
-
+            $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
             $form['actions'][] = [
                 "type" => "ExpansionPanel",
-                "caption" => "📁 " . $category . ($isActive && $subPath !== "" ? " (> $subPath)" : ""),
-                "items" => $panelItems
+                "caption" => "📝 2. Details bearbeiten: " . $selectedIdent,
+                "expanded" => true,
+                "items" => [
+                    [
+                        "type" => "List",
+                        "name" => "DetailListUI",
+                        "caption" => "Felder für " . $selectedIdent,
+                        "rowCount" => 6,
+                        "add" => true,
+                        "delete" => true,
+                        "columns" => [
+                            ["caption" => "Feldname (User, PW, IP...)", "name" => "Key", "width" => "250px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
+                            ["caption" => "Inhalt", "name" => "Value", "width" => "auto", "add" => "", "edit" => ["type" => "ValidationTextBox"]]
+                        ],
+                        "values" => $detailValues
+                    ],
+                    [
+                        "type" => "Button",
+                        "caption" => "💾 Details für '" . $selectedIdent . "' speichern",
+                        "onClick" => "AVT_SaveRecordDetails(\$id, \$DetailListUI);"
+                    ],
+                    [
+                        "type" => "Button",
+                        "caption" => "🗑️ Ganzen Eintrag '" . $selectedIdent . "' löschen",
+                        "onClick" => "AVT_DeleteFullRecord(\$id);"
+                    ]
+                ]
             ];
         }
 
-        // Neue Hauptgruppe & Import (unverändert)
+        // 3. Import (unverändert)
         $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
-        $form['actions'][] = ["type" => "Label", "caption" => "➕ Neue Hauptkategorie anlegen", "bold" => true];
-        $form['actions'][] = ["type" => "ValidationTextBox", "name" => "NewCategoryName", "caption" => "Name", "value" => ""];
-        $form['actions'][] = ["type" => "Button", "caption" => "Gruppe erstellen", "onClick" => "AVT_AddCategory(\$id, \$NewCategoryName);"];
         $form['actions'][] = ["type" => "Label", "caption" => "📥 JSON IMPORT", "bold" => true];
         $form['actions'][] = ["type" => "ValidationTextBox", "name" => "ImportInput", "caption" => "JSON", "value" => ""];
         $form['actions'][] = ["type" => "Button", "caption" => "Importieren", "onClick" => "AVT_ImportJson(\$id, \$ImportInput);"];
@@ -123,89 +117,61 @@ class AttributeVaultTest extends IPSModule {
     }
 
     // =========================================================================
-    // NAVIGATION INNERHALB DES AKKORDEONS
+    // AKTIONEN
     // =========================================================================
 
-    public function NavigateDown(string $Category, string $Ident, string $Type): void {
-        if ($Type !== "Ordner") {
-            echo "Nur Ordner können geöffnet werden.";
-            return;
-        }
-        $current = $this->ReadAttributeString("CurrentPath");
-        
-        // Wenn wir schon in der Kategorie sind, hängen wir an, sonst starten wir neu
-        if (strpos($current, $Category) === 0) {
-            $newPath = $current . "/" . $Ident;
-        } else {
-            $newPath = $Category . "/" . $Ident;
-        }
-        
-        $this->WriteAttributeString("CurrentPath", $newPath);
+    public function SelectRecord(string $Ident): void {
+        $this->WriteAttributeString("SelectedIdent", $Ident);
         $this->ReloadForm();
     }
 
-    public function NavigateUp(): void {
-        $current = $this->ReadAttributeString("CurrentPath");
-        $parts = explode('/', $current);
-        array_pop($parts);
-        $this->WriteAttributeString("CurrentPath", implode('/', $parts));
+    public function CreateNewRecord(): void {
+        $this->WriteAttributeString("SelectedIdent", "NEUER_EINTRAG");
         $this->ReloadForm();
     }
 
-    // =========================================================================
-    // SPEICHER-AKTIONEN
-    // =========================================================================
+    public function SaveRecordDetails($DetailList): void {
+        $selectedIdent = $this->ReadAttributeString("SelectedIdent");
+        if ($selectedIdent === "") return;
 
-    public function UpdateCategory(string $CategoryBase64, $ListData): void {
-        $category = base64_decode($CategoryBase64);
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $currentPath = $this->ReadAttributeString("CurrentPath");
         
-        // Den Pfad innerhalb der Kategorie bestimmen
-        $subPath = "";
-        if (strpos($currentPath, $category) === 0) {
-            $subPath = substr($currentPath, strlen($category) + 1);
-        }
-
-        // Pointer auf die aktuelle Ebene setzen
-        $temp = &$masterData[$category];
-        if ($subPath !== "") {
-            foreach (explode('/', $subPath) as $part) {
-                if (!isset($temp[$part])) $temp[$part] = [];
-                $temp = &$temp[$part];
+        $newFields = [];
+        foreach ($DetailList as $row) {
+            if ($row['Key'] !== "") {
+                $newFields[(string)$row['Key']] = (string)$row['Value'];
             }
         }
 
-        $newList = [];
-        foreach ($ListData as $row) {
-            $name = (string)($row['Ident'] ?? '');
-            if ($name === "") continue;
-            if (($row['Type'] ?? 'Wert') === "Ordner") {
-                $newList[$name] = (isset($temp[$name]) && is_array($temp[$name])) ? $temp[$name] : [];
-            } else {
-                $newList[$name] = (string)($row['Secret'] ?? '');
-            }
+        // In das tiefe Array einweben
+        $parts = explode('/', $selectedIdent);
+        $temp = &$masterData;
+        foreach ($parts as $part) {
+            if (!isset($temp[$part]) || !is_array($temp[$part])) { $temp[$part] = []; }
+            $temp = &$temp[$part];
         }
+        $temp = $newFields;
 
-        $temp = $newList;
         $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
         $this->ReloadForm();
-        echo "✅ Gespeichert!";
+        echo "✅ Details für '$selectedIdent' gespeichert!";
     }
 
-    public function AddCategory(string $Name): void {
-        if ($Name === "") return;
+    public function DeleteFullRecord(): void {
+        $selectedIdent = $this->ReadAttributeString("SelectedIdent");
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $masterData[$Name] = [];
-        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
-        $this->ReloadForm();
-    }
+        
+        // Löschen aus verschachteltem Array
+        $parts = explode('/', $selectedIdent);
+        $lastPart = array_pop($parts);
+        $temp = &$masterData;
+        foreach ($parts as $part) {
+            if (isset($temp[$part])) { $temp = &$temp[$part]; }
+        }
+        unset($temp[$lastPart]);
 
-    public function DeleteCategory(string $CategoryBase64): void {
-        $category = base64_decode($CategoryBase64);
-        $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        unset($masterData[$category]);
         $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
+        $this->WriteAttributeString("SelectedIdent", "");
         $this->ReloadForm();
     }
 
@@ -213,8 +179,9 @@ class AttributeVaultTest extends IPSModule {
         $data = json_decode($Input, true);
         if (is_array($data)) {
             $this->WriteAttributeString("EncryptedVault", $this->EncryptData($data));
-            $this->WriteAttributeString("CurrentPath", "");
+            $this->WriteAttributeString("SelectedIdent", "");
             $this->ReloadForm();
+            echo "✅ Import erfolgreich!";
         }
     }
 
@@ -222,17 +189,29 @@ class AttributeVaultTest extends IPSModule {
     // HILFSFUNKTIONEN
     // =========================================================================
 
-    private function FlattenLevel($data, &$result) {
-        if (!is_array($data)) return;
-        foreach ($data as $key => $value) {
-            $isFolder = is_array($value);
-            $result[] = [
-                "Icon"   => $isFolder ? "📁" : "🔑",
-                "Ident"  => (string)$key,
-                "Secret" => $isFolder ? "" : (string)$value,
-                "Type"   => $isFolder ? "Ordner" : "Wert"
-            ];
+    private function FindAllRecords($array, $prefix, &$records) {
+        if (!is_array($array)) return;
+        
+        // Prüfen, ob dies ein "Blatt" ist (enthält nur Strings, keine weiteren Arrays)
+        $hasSubArrays = false;
+        foreach ($array as $v) { if (is_array($v)) { $hasSubArrays = true; break; } }
+
+        if (!$hasSubArrays && !empty($array)) {
+            $records[$prefix] = $array;
+        } else {
+            foreach ($array as $k => $v) {
+                $newPrefix = ($prefix === "") ? (string)$k : $prefix . "/" . $k;
+                $this->FindAllRecords($v, $newPrefix, $records);
+            }
         }
+    }
+
+    private function GetNestedValue($array, $path) {
+        $parts = explode('/', $path);
+        foreach ($parts as $part) {
+            if (isset($array[$part])) { $array = $array[$part]; } else { return null; }
+        }
+        return $array;
     }
 
     private function GetMasterKey(): string {
