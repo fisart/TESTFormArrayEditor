@@ -2,7 +2,7 @@
     "elements": [
         {
             "type": "Label",
-            "caption": "Sicherheits-Konfiguration"
+            "caption": "Sicherheits-Basis-Konfiguration"
         },
         {
             "type": "ValidationTextBox",
@@ -11,13 +11,13 @@
         },
         {
             "type": "Label",
-            "caption": "Hinweis: Der Pfad muss für IP-Symcon schreibbar sein, damit der Schlüssel erzeugt werden kann."
+            "caption": "Hinweis: Der Pfad muss existieren und für IP-Symcon schreibbar sein."
         }
     ],
     "actions": [
         {
             "type": "Label",
-            "caption": "Verschlüsselter Tresor (Actions-Bereich):"
+            "caption": "Lade Tresor-Editor..."
         }
     ]
 }
