@@ -8,8 +8,8 @@ class AttributeVaultTest extends IPSModule {
         parent::Create();
         $this->RegisterPropertyString("KeyFolderPath", "");
         $this->RegisterAttributeString("EncryptedVault", "{}");
-        $this->RegisterAttributeString("CurrentPath", "");    // Navigator-Position
-        $this->RegisterAttributeString("SelectedRecord", ""); // Aktuell editiertes Gerät
+        $this->RegisterAttributeString("CurrentPath", "");    
+        $this->RegisterAttributeString("SelectedRecord", ""); 
     }
 
     public function ApplyChanges() {
@@ -22,7 +22,7 @@ class AttributeVaultTest extends IPSModule {
         $currentPath = $this->ReadAttributeString("CurrentPath");
         $selectedRecord = $this->ReadAttributeString("SelectedRecord");
         
-        // 1. Navigation zum aktuellen Pfad im Array
+        // 1. Navigation zum Pfad
         $displayData = $data;
         if ($currentPath !== "") {
             foreach (explode('/', $currentPath) as $part) {
@@ -30,15 +30,16 @@ class AttributeVaultTest extends IPSModule {
             }
         }
 
-        // 2. Master-Liste für die aktuelle Ebene aufbauen
+        // 2. Liste aufbauen
         $masterList = [];
         if (is_array($displayData)) {
+            ksort($displayData);
             foreach ($displayData as $key => $value) {
-                $isFolder = is_array($value) && $this->HasSubArrays($value);
+                $isFolder = $this->CheckIfFolder($value);
                 $masterList[] = [
                     "Icon"  => $isFolder ? "📁" : "🔑",
                     "Ident" => (string)$key,
-                    "Type"  => $isFolder ? "Ordner" : "Gerät/Record"
+                    "Type"  => $isFolder ? "Folder" : "Record"
                 ];
             }
         }
@@ -50,46 +51,52 @@ class AttributeVaultTest extends IPSModule {
             "actions" => [
                 [
                     "type" => "Label",
-                    "caption" => "📍 Position: " . ($currentPath === "" ? "root" : "root / " . str_replace("/", " / ", $currentPath)),
+                    "caption" => "📍 Position: root" . ($currentPath !== "" ? " / " . str_replace("/", " / ", $currentPath) : ""),
                     "bold" => true
-                ],
-                [
-                    "type" => "Button",
-                    "caption" => "⬅️ Zurück",
-                    "visible" => ($currentPath !== ""),
-                    "onClick" => "AVT_NavigateUp(\$id);"
-                ],
-                [
-                    "type" => "List",
-                    "name" => "MasterListUI",
-                    "caption" => "Wählen Sie einen Ordner zum Öffnen oder ein Gerät zum Bearbeiten",
-                    "rowCount" => 6,
-                    "columns" => [
-                        ["caption" => " ", "name" => "Icon", "width" => "35px"],
-                        ["caption" => "Name", "name" => "Ident", "width" => "auto"],
-                        ["caption" => "Typ", "name" => "Type", "width" => "150px"]
-                    ],
-                    "values" => $masterList,
-                    // Ein Klick steuert alles:
-                    "onClick" => "AVT_HandleClick(\$id, \$MasterListUI['Ident'], \$MasterListUI['Type']);"
                 ]
             ]
         ];
 
-        // 3. Detail-Panel (Erscheint nur, wenn ein Gerät/Record gewählt wurde)
+        // Zurück Button
+        if ($currentPath !== "") {
+            $form['actions'][] = [
+                "type" => "Button",
+                "caption" => "⬅️ Ebene höher",
+                "onClick" => "AVT_NavigateUp(\$id);"
+            ];
+        }
+
+        // Die Hauptliste
+        $form['actions'][] = [
+            "type" => "List",
+            "name" => "MasterListUI",
+            "caption" => "Klicken zum Öffnen (📁) oder Editieren (🔑)",
+            "rowCount" => 8,
+            "columns" => [
+                ["caption" => " ", "name" => "Icon", "width" => "35px"],
+                ["caption" => "Name", "name" => "Ident", "width" => "auto"],
+                ["caption" => "Typ", "name" => "Type", "width" => "150px"]
+            ],
+            "values" => $masterList,
+            "onClick" => "AVT_HandleClick(\$id, \$MasterListUI['Ident'], \$MasterListUI['Type']);"
+        ];
+
+        // 3. Detail-Panel (nur für Records)
         if ($selectedRecord !== "") {
             $recordPath = ($currentPath === "") ? $selectedRecord : $currentPath . "/" . $selectedRecord;
-            $currentFields = $this->GetNestedValue($data, $recordPath) ?: [];
+            $fields = $this->GetNestedValue($data, $recordPath);
             
             $detailValues = [];
-            foreach ($currentFields as $k => $v) {
-                if (!is_array($v)) $detailValues[] = ["Key" => $k, "Value" => (string)$v];
+            if (is_array($fields)) {
+                foreach ($fields as $k => $v) {
+                    if (!is_array($v)) $detailValues[] = ["Key" => $k, "Value" => (string)$v];
+                }
             }
 
             $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
             $form['actions'][] = [
                 "type" => "ExpansionPanel",
-                "caption" => "📝 Details bearbeiten: " . $recordPath,
+                "caption" => "📝 Bearbeite: " . $recordPath,
                 "expanded" => true,
                 "items" => [
                     [
@@ -106,29 +113,31 @@ class AttributeVaultTest extends IPSModule {
                     ],
                     [
                         "type" => "Button",
-                        "caption" => "💾 Änderungen für '" . $selectedRecord . "' speichern",
+                        "caption" => "💾 Speichern",
                         "onClick" => "AVT_SaveRecord(\$id, \$DetailListUI);"
                     ]
                 ]
             ];
         }
 
+        // Import Bereich (Unten)
+        $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
+        $form['actions'][] = ["type" => "Button", "caption" => "📥 JSON Importieren", "onClick" => "AVT_ShowImport(\$id);"];
+
         return json_encode($form);
     }
 
-    // =========================================================================
-    // LOGIK FÜR KLICK-STEUERUNG
-    // =========================================================================
-
+    /**
+     * Ein Klick verarbeitet Navigation ODER Auswahl
+     */
     public function HandleClick(string $Ident, string $Type): void {
-        if ($Type === "Ordner") {
-            // Drill-Down: In den Ordner gehen
+        if ($Type === "Folder") {
             $current = $this->ReadAttributeString("CurrentPath");
             $newPath = ($current === "") ? $Ident : $current . "/" . $Ident;
             $this->WriteAttributeString("CurrentPath", $newPath);
-            $this->WriteAttributeString("SelectedRecord", ""); // Detail-Panel schließen
+            $this->WriteAttributeString("SelectedRecord", ""); // Panel zu
         } else {
-            // Auswahl: Gerät im Detail-Panel anzeigen
+            // Es ist ein Record -> Detail-Panel öffnen
             $this->WriteAttributeString("SelectedRecord", $Ident);
         }
         $this->ReloadForm();
@@ -155,7 +164,7 @@ class AttributeVaultTest extends IPSModule {
             if ($row['Key'] !== "") $newFields[(string)$row['Key']] = (string)$row['Value'];
         }
 
-        // Im Master-Array platzieren
+        // Pfad im Array ansteuern und setzen
         $parts = explode('/', $fullPath);
         $temp = &$masterData;
         foreach ($parts as $part) {
@@ -173,10 +182,16 @@ class AttributeVaultTest extends IPSModule {
     // HILFSFUNKTIONEN
     // =========================================================================
 
-    private function HasSubArrays($array): bool {
-        if (!is_array($array)) return false;
-        foreach ($array as $v) { if (is_array($v)) return true; }
-        return false;
+    /**
+     * Erkennt, ob ein Array ein "Ordner" (enthält Unter-Arrays) 
+     * oder ein "Record" (enthält nur Daten/Strings) ist.
+     */
+    private function CheckIfFolder($value): bool {
+        if (!is_array($value)) return false;
+        foreach ($value as $v) {
+            if (is_array($v)) return true; // Sobald ein Unter-Array gefunden wird -> Ordner
+        }
+        return false; // Nur Strings gefunden -> Record
     }
 
     private function GetNestedValue($array, $path) {
@@ -187,7 +202,7 @@ class AttributeVaultTest extends IPSModule {
         return $array;
     }
 
-    // ... GetMasterKey, EncryptData, DecryptData (unverändert wie zuvor) ...
+    // Krypto-Funktionen (unverändert)
     private function GetMasterKey(): string {
         $folder = $this->ReadPropertyString("KeyFolderPath");
         if ($folder === "" || !is_dir($folder)) return "";
