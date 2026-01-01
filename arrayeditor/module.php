@@ -67,13 +67,13 @@ class AttributeVaultTest extends IPSModule {
 
         switch ($Ident) {
             case "SaveVault":
-                $this->LogMessage("Inhalt JSON: " . $Value, KL_MESSAGE);
+                // VORSCHLAG 2: Wir loggen das Ergebnis von print_r, um den exakten Typ zu sehen
+                $this->LogMessage("Inhalt RAW: " . print_r($Value, true), KL_MESSAGE);
                 
                 $data = json_decode((string)$Value, true);
                 
                 if (is_array($data)) {
-                    // NORMALISIERUNG: Falls nur ein einzelnes Objekt {} geschickt wurde, 
-                    // packen wir es in ein Array [{}], damit der Loop funktioniert.
+                    // Normalisierung für Einzelobjekte
                     if (isset($data['Ident'])) {
                         $this->LogMessage("Info: Einzelne Zeile erkannt, konvertiere zu Liste.", KL_MESSAGE);
                         $data = [$data];
@@ -99,7 +99,6 @@ class AttributeVaultTest extends IPSModule {
         $finalNestedArray = [];
         $count = 0;
         foreach ($inputList as $row) {
-            // Spaltennamen prüfen (manche IPS Versionen senden klein geschriebene Keys)
             $path = (string)($row['Ident'] ?? $row['ident'] ?? '');
             $secret = (string)($row['Secret'] ?? $row['secret'] ?? '');
 
