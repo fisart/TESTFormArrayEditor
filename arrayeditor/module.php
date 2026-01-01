@@ -7,10 +7,8 @@ class AttributeVaultTest extends IPSModule {
     public function Create() {
         parent::Create();
         $this->RegisterPropertyString("KeyFolderPath", "");
-        
-        // ATTRIBUTE: Disk-Clean Speicher
         $this->RegisterAttributeString("EncryptedVault", "");
-        $this->RegisterAttributeString("CurrentPath", ""); // Merkt sich die Position im Explorer
+        $this->RegisterAttributeString("CurrentPath", "");
     }
 
     public function ApplyChanges() {
@@ -18,17 +16,11 @@ class AttributeVaultTest extends IPSModule {
         $this->SetStatus($this->ReadPropertyString("KeyFolderPath") == "" ? 104 : 102);
     }
 
-    /**
-     * DER EXPLORER-EDITOR (DYNAMISCH)
-     */
     public function GetConfigurationForm(): string {
-        $this->LogMessage("--- Explorer: Lade Ebene ---", KL_MESSAGE);
-
-        // 1. Daten laden und Pfad bestimmen
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $currentPath = $this->ReadAttributeString("CurrentPath");
         
-        // Navigiere im Array zum aktuellen Pfad
+        // Navigation zum aktuellen Pfad
         $displayData = $data;
         if ($currentPath !== "") {
             $parts = explode('/', $currentPath);
@@ -39,7 +31,6 @@ class AttributeVaultTest extends IPSModule {
             }
         }
 
-        // 2. Liste für die aktuelle Ebene aufbereiten
         $listValues = [];
         if (is_array($displayData)) {
             foreach ($displayData as $key => $value) {
@@ -48,12 +39,11 @@ class AttributeVaultTest extends IPSModule {
                     "Icon"   => $isFolder ? "📁" : "🔑",
                     "Name"   => $key,
                     "Type"   => $isFolder ? "Ordner" : "Wert",
-                    "Value"  => $isFolder ? "(Inhalt...)" : (string)$value
+                    "Value"  => $isFolder ? "" : (string)$value
                 ];
             }
         }
 
-        // 3. Formular-Struktur bauen
         $form = [
             "elements" => [
                 ["type" => "ValidationTextBox", "name" => "KeyFolderPath", "caption" => "Ordner für master.key"]
@@ -78,10 +68,22 @@ class AttributeVaultTest extends IPSModule {
                     "add" => true,
                     "delete" => true,
                     "columns" => [
-                        ["caption" => " ", "name" => "Icon", "width" => "30px", "add" => "🔑"],
+                        ["caption" => " ", "name" => "Icon", "width" => "35px", "add" => "🔑"],
                         ["caption" => "Name", "name" => "Name", "width" => "250px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
                         ["caption" => "Inhalt / Passwort", "name" => "Value", "width" => "auto", "add" => "", "edit" => ["type" => "PasswordTextBox"]],
-                        ["caption" => "Typ", "name" => "Type", "width" => "100px", "add" => "Wert"]
+                        [
+                            "caption" => "Typ", 
+                            "name" => "Type", 
+                            "width" => "120px", 
+                            "add" => "Wert", 
+                            "edit" => [
+                                "type" => "Select",
+                                "options" => [
+                                    ["caption" => "Wert / Passwort", "value" => "Wert"],
+                                    ["caption" => "Ordner (Container)", "value" => "Ordner"]
+                                ]
+                            ]
+                        ]
                     ],
                     "values" => $listValues
                 ],
@@ -89,35 +91,35 @@ class AttributeVaultTest extends IPSModule {
                     "type" => "Button",
                     "caption" => "💾 Änderungen auf dieser Ebene speichern",
                     "onClick" => "AVT_UpdateLevel(\$id, \$ExplorerList);"
+                ],
+                [
+                    "type" => "Label",
+                    "caption" => "Um einen Ordner zu betreten: Zeile markieren und 'Ordner öffnen' klicken."
+                ],
+                [
+                    "type" => "Button",
+                    "caption" => "📂 Ordner öffnen",
+                    "onClick" => "if (isset(\$ExplorerList)) { AVT_NavigateDown(\$id, \$ExplorerList['Name'], \$ExplorerList['Type']); } else { echo 'Bitte erst einen Ordner wählen'; }"
                 ]
             ]
-        ];
-
-        // Button "Öffnen" nur anzeigen, wenn Zeilen vorhanden sind, die Ordner sind
-        $form['actions'][] = [
-            "type" => "Label",
-            "caption" => "Markieren Sie einen Ordner und klicken Sie auf Öffnen, um tiefer zu gehen."
-        ];
-        
-        $form['actions'][] = [
-            "type" => "Button",
-            "caption" => "📂 Ordner öffnen",
-            "onClick" => "if (isset(\$ExplorerList)) { AVT_NavigateDown(\$id, \$ExplorerList['Name']); } else { echo 'Bitte erst einen Ordner wählen'; }"
         ];
 
         return json_encode($form);
     }
 
     // =========================================================================
-    // NAVIGATIONSLOGIK
+    // NAVIGATION
     // =========================================================================
 
-    public function NavigateDown(string $Target): void {
+    public function NavigateDown(string $Target, string $Type): void {
+        if ($Type !== "Ordner") {
+            echo "Dies ist kein Ordner und kann nicht geöffnet werden.";
+            return;
+        }
         $current = $this->ReadAttributeString("CurrentPath");
         $newPath = ($current === "") ? $Target : $current . "/" . $Target;
         $this->WriteAttributeString("CurrentPath", $newPath);
-        // UI Refresh erzwingen
-        $this->UpdateForm();
+        $this->ReloadForm();
     }
 
     public function NavigateUp(): void {
@@ -125,113 +127,77 @@ class AttributeVaultTest extends IPSModule {
         $parts = explode('/', $current);
         array_pop($parts);
         $this->WriteAttributeString("CurrentPath", implode('/', $parts));
-        $this->UpdateForm();
-    }
-
-    private function UpdateForm() {
         $this->ReloadForm();
     }
 
     // =========================================================================
-    // SPEICHERLOGIK (LEVEL-BASIERT)
+    // SPEICHERN
     // =========================================================================
 
     public function UpdateLevel($ExplorerList): void {
-        $this->LogMessage("Speichere aktuelle Explorer-Ebene...", KL_MESSAGE);
-        
-        // 1. Gesamtdaten laden
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $currentPath = $this->ReadAttributeString("CurrentPath");
 
-        // 2. Den Zweig im Master-Array finden und aktualisieren
-        $newDataAtLevel = [];
-        foreach ($ExplorerList as $row) {
-            $name = (string)$row['Name'];
-            $val  = (string)$row['Value'];
-            if ($name === "") continue;
-
-            // Wenn es vorher ein Ordner war, behalten wir die Struktur bei (außer der User hat es überschrieben)
-            $newDataAtLevel[$name] = $val;
-        }
-
-        // 3. Den neuen Zweig ins Master-Array einweben
-        if ($currentPath === "") {
-            $masterData = $newDataAtLevel;
-        } else {
-            $parts = explode('/', $currentPath);
-            $temp = &$masterData;
-            foreach ($parts as $part) {
+        // Ziel-Ebene im Array finden
+        $temp = &$masterData;
+        if ($currentPath !== "") {
+            foreach (explode('/', $currentPath) as $part) {
+                if (!isset($temp[$part])) $temp[$part] = [];
                 $temp = &$temp[$part];
             }
-            // Hier müssen wir vorsichtig sein: Bestehende Ordner-Strukturen, 
-            // die NICHT in der Liste waren, sollen nicht gelöscht werden.
-            foreach ($newDataAtLevel as $k => $v) {
-                if (isset($temp[$k]) && is_array($temp[$k]) && !is_array($v)) {
-                    // War ein Ordner, ist jetzt ein String -> Wert wird überschrieben
-                    $temp[$k] = $v;
-                } elseif (isset($temp[$k]) && is_array($temp[$k])) {
-                    // Es war ein Ordner und bleibt einer -> nichts tun, Inhalt bleibt erhalten
-                } else {
-                    $temp[$k] = $v;
-                }
-            }
-            // Löschen von Elementen, die nicht mehr in der Liste sind
-            foreach ($temp as $k => $v) {
-                $found = false;
-                foreach($ExplorerList as $row) { if ($row['Name'] == $k) $found = true; }
-                if (!$found) unset($temp[$k]);
+        }
+
+        $newList = [];
+        foreach ($ExplorerList as $row) {
+            $name = (string)$row['Name'];
+            if ($name === "") continue;
+
+            $type = (string)($row['Type'] ?? 'Wert');
+            $val  = (string)($row['Value'] ?? '');
+
+            if ($type === "Ordner") {
+                // Bestehenden Inhalt behalten, falls es schon ein Ordner war
+                $newList[$name] = (isset($temp[$name]) && is_array($temp[$name])) ? $temp[$name] : [];
+            } else {
+                $newList[$name] = $val;
             }
         }
 
-        // 4. Verschlüsseln und Speichern
-        $encrypted = $this->EncryptData($masterData);
-        $this->WriteAttributeString("EncryptedVault", $encrypted);
+        $temp = $newList;
+        $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
+        $this->ReloadForm();
         echo "✅ Ebene gespeichert!";
     }
 
     // =========================================================================
-    // API & KRYPTO (BEWÄHRT)
+    // KRYPTO (BEWÄHRT)
     // =========================================================================
-
-    public function GetSecret(string $Path): string {
-        $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $parts = explode('/', $Path);
-        $current = $data;
-        foreach ($parts as $part) {
-            if (isset($current[$part])) { $current = $current[$part]; } 
-            else { return ""; }
-        }
-        return is_string($current) ? $current : json_encode($current);
-    }
 
     private function GetMasterKey(): string {
         $folder = $this->ReadPropertyString("KeyFolderPath");
         if ($folder === "" || !is_dir($folder)) return "";
         $path = rtrim($folder, '/\\') . DIRECTORY_SEPARATOR . 'master.key';
         if (!file_exists($path)) {
-            $key = bin2hex(random_bytes(16));
-            file_put_contents($path, $key);
+            file_put_contents($path, bin2hex(random_bytes(16)));
         }
         return trim((string)file_get_contents($path));
     }
 
     private function EncryptData(array $data): string {
-        $keyHex = $this->GetMasterKey();
-        if ($keyHex === "") return "";
-        $plain = json_encode($data);
+        $key = $this->GetMasterKey();
+        if ($key === "") return "";
         $iv = random_bytes(12);
         $tag = "";
-        $cipher = openssl_encrypt($plain, "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, $iv, $tag, "", 16);
-        return ($cipher === false) ? "" : json_encode(["iv" => bin2hex($iv), "tag" => bin2hex($tag), "data" => base64_encode($cipher)]);
+        $cipher = openssl_encrypt(json_encode($data), "aes-128-gcm", hex2bin($key), OPENSSL_RAW_DATA, $iv, $tag, "", 16);
+        return json_encode(["iv" => bin2hex($iv), "tag" => bin2hex($tag), "data" => base64_encode($cipher)]);
     }
 
     private function DecryptData(string $encrypted): array {
         if ($encrypted === "" || $encrypted === "[]") return [];
         $decoded = json_decode($encrypted, true);
-        if (!$decoded || !isset($decoded['data'])) return [];
-        $keyHex = $this->GetMasterKey();
-        if ($keyHex === "") return [];
-        $dec = openssl_decrypt(base64_decode($decoded['data']), "aes-128-gcm", hex2bin($keyHex), OPENSSL_RAW_DATA, hex2bin($decoded['iv']), hex2bin($decoded['tag']), "");
+        $key = $this->GetMasterKey();
+        if (!$decoded || $key === "") return [];
+        $dec = openssl_decrypt(base64_decode($decoded['data']), "aes-128-gcm", hex2bin($key), OPENSSL_RAW_DATA, hex2bin($decoded['iv']), hex2bin($decoded['tag']), "");
         return json_decode($dec ?: '[]', true) ?: [];
     }
 }
