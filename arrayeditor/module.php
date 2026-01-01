@@ -16,7 +16,7 @@ class AttributeVaultTest extends IPSModule {
     }
 
     public function GetConfigurationForm(): string {
-        $this->LogMessage("--- Akkordeon-Editor: Lade Panels ---", KL_MESSAGE);
+        $this->LogMessage("--- Akkordeon-Editor (mit Typ-Wahl): Lade Panels ---", KL_MESSAGE);
 
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         
@@ -30,18 +30,16 @@ class AttributeVaultTest extends IPSModule {
         ksort($data); 
         foreach ($data as $category => $content) {
             
+            // Unterelemente für diese Kategorie flachklopfen und Typ/Icon bestimmen
             $flatValues = [];
             if (is_array($content)) {
-                $this->FlattenArray($content, "", $flatValues);
+                $this->FlattenArrayForExplorer($content, "", $flatValues);
             } else {
-                $flatValues[] = ["Ident" => ".", "Secret" => (string)$content];
+                $flatValues[] = ["Icon" => "🔑", "Ident" => ".", "Secret" => (string)$content, "Type" => "Wert"];
             }
 
-            // Wir nutzen einen Hash für den Listennamen (sicher gegen Sonderzeichen)
             $hash = md5($category);
             $listName = "List_" . $hash;
-            
-            // WICHTIG: Kategoriename für den Button-Befehl Base64 kodieren
             $b64Cat = base64_encode($category);
 
             $form['actions'][] = [
@@ -51,75 +49,108 @@ class AttributeVaultTest extends IPSModule {
                     [
                         "type" => "List",
                         "name" => $listName,
-                        "rowCount" => 6,
+                        "rowCount" => 8,
                         "add" => true,
                         "delete" => true,
                         "columns" => [
+                            ["caption" => " ", "name" => "Icon", "width" => "35px", "add" => "🔑"],
                             ["caption" => "Unterpfad / Feld", "name" => "Ident", "width" => "300px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
-                            ["caption" => "Wert", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "ValidationTextBox"]]
+                            ["caption" => "Wert", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
+                            [
+                                "caption" => "Typ", 
+                                "name" => "Type", 
+                                "width" => "150px", 
+                                "add" => "Wert", 
+                                "edit" => [
+                                    "type" => "Select",
+                                    "options" => [
+                                        ["caption" => "Wert / Passwort", "value" => "Wert"],
+                                        ["caption" => "Ordner (Container)", "value" => "Ordner"]
+                                    ]
+                                ]
+                            ]
                         ],
                         "values" => $flatValues
                     ],
                     [
                         "type" => "Button",
                         "caption" => "💾 Änderungen für '" . $category . "' speichern",
-                        // Wir übergeben den Namen Base64-kodiert an PHP
                         "onClick" => "AVT_UpdateCategory(\$id, '$b64Cat', \$$listName);"
                     ],
                     [
                         "type" => "Button",
-                        "caption" => "🗑️ Gesamte Kategorie löschen",
+                        "caption" => "🗑️ Gruppe löschen",
                         "onClick" => "AVT_DeleteCategory(\$id, '$b64Cat');"
                     ]
                 ]
             ];
         }
 
+        // Steuerung für neue Hauptkategorien
         $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
-        $form['actions'][] = ["type" => "Label", "caption" => "➕ Neue Hauptkategorie anlegen", "bold" => true];
+        $form['actions'][] = ["type" => "Label", "caption" => "➕ Neue Hauptkategorie (Ebene 1) anlegen", "bold" => true];
         $form['actions'][] = ["type" => "ValidationTextBox", "name" => "NewCategoryName", "caption" => "Name der neuen Gruppe", "value" => ""];
         $form['actions'][] = ["type" => "Button", "caption" => "Gruppe erstellen", "onClick" => "AVT_AddCategory(\$id, \$NewCategoryName);"];
 
+        // Import/Export Logik bleibt erhalten
         $form['actions'][] = ["type" => "Label", "caption" => "📥 JSON IMPORT", "bold" => true];
         $form['actions'][] = ["type" => "ValidationTextBox", "name" => "ImportInput", "caption" => "JSON String hier einfügen", "value" => ""];
-        $form['actions'][] = ["type" => "Button", "caption" => "JSON importieren", "onClick" => "AVT_ImportJson(\$id, \$ImportInput);"];
+        $form['actions'][] = ["type" => "Button", "caption" => "JSON jetzt importieren", "onClick" => "AVT_ImportJson(\$id, \$ImportInput);"];
 
         return json_encode($form);
     }
 
     // =========================================================================
-    // SPEICHER-AKTIONEN (JETZT MIT BASE64 DECODE)
+    // SPEICHER-AKTIONEN
     // =========================================================================
 
     public function UpdateCategory(string $CategoryBase64, $ListData): void {
         $category = base64_decode($CategoryBase64);
-        $this->LogMessage("Update für Kategorie: " . $category, KL_MESSAGE);
-
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         
         $newCategoryContent = [];
         foreach ($ListData as $row) {
             $path = (string)($row['Ident'] ?? '');
             $val  = (string)($row['Secret'] ?? '');
-            if ($path === "") continue;
+            $type = (string)($row['Type'] ?? 'Wert');
 
-            if ($path === ".") {
-                $newCategoryContent = $val;
+            if ($path === "" || $path === ".") continue;
+
+            $parts = explode('/', $path);
+            $temp = &$newCategoryContent;
+            foreach ($parts as $part) {
+                if (!isset($temp[$part]) || !is_array($temp[$part])) { $temp[$part] = []; }
+                $temp = &$temp[$part];
+            }
+
+            if ($type === "Ordner") {
+                // Falls es schon ein Ordner war, Inhalt bewahren, sonst leeres Array
+                // Wir navigieren im alten Stand der Kategorie, um Daten nicht zu verlieren
+                $oldContent = $masterData[$category] ?? [];
+                $existing = $this->GetNestedValue($oldContent, $path);
+                $temp = is_array($existing) ? $existing : [];
             } else {
-                $parts = explode('/', $path);
-                $temp = &$newCategoryContent;
-                foreach ($parts as $part) {
-                    if (!isset($temp[$part]) || !is_array($temp[$part])) { $temp[$part] = []; }
-                    $temp = &$temp[$part];
-                }
                 $temp = $val;
             }
         }
 
         $masterData[$category] = $newCategoryContent;
         $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
+        
+        // Debug Log
+        $this->LogMessage("--- TRESOR AKTUALISIERT ---", KL_MESSAGE);
+        $this->LogMessage(json_encode($masterData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), KL_MESSAGE);
+        
         $this->ReloadForm();
-        echo "✅ '$category' gespeichert!";
+        echo "✅ '$category' wurde gespeichert.";
+    }
+
+    private function GetNestedValue($array, $path) {
+        $parts = explode('/', $path);
+        foreach ($parts as $part) {
+            if (isset($array[$part])) { $array = $array[$part]; } else { return null; }
+        }
+        return $array;
     }
 
     public function DeleteCategory(string $CategoryBase64): void {
@@ -129,7 +160,6 @@ class AttributeVaultTest extends IPSModule {
             unset($masterData[$category]);
             $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
             $this->ReloadForm();
-            echo "🗑️ '$category' gelöscht.";
         }
     }
 
@@ -153,26 +183,25 @@ class AttributeVaultTest extends IPSModule {
     }
 
     // =========================================================================
-    // API & KRYPTO (BEWÄHRT)
+    // HILFSFUNKTIONEN
     // =========================================================================
 
-    public function GetSecret(string $Path): string {
-        $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        $parts = explode('/', $Path);
-        $current = $data;
-        foreach ($parts as $part) {
-            if (isset($current[$part])) { $current = $current[$part]; } 
-            else { return ""; }
-        }
-        return is_string($current) ? $current : json_encode($current);
-    }
-
-    private function FlattenArray($array, $prefix, &$result) {
+    private function FlattenArrayForExplorer($array, $prefix, &$result) {
         if (!is_array($array)) return;
         foreach ($array as $key => $value) {
             $fullKey = ($prefix === "") ? (string)$key : $prefix . "/" . $key;
-            if (is_array($value)) { $this->FlattenArray($value, $fullKey, $result); }
-            else { $result[] = ["Ident" => $fullKey, "Secret" => $value]; }
+            $isFolder = is_array($value);
+            
+            $result[] = [
+                "Icon"   => $isFolder ? "📁" : "🔑",
+                "Ident"  => $fullKey,
+                "Secret" => $isFolder ? "" : (string)$value,
+                "Type"   => $isFolder ? "Ordner" : "Wert"
+            ];
+            
+            if ($isFolder) {
+                $this->FlattenArrayForExplorer($value, $fullKey, $result);
+            }
         }
     }
 
