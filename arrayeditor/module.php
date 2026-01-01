@@ -6,47 +6,59 @@ class AttributeVaultTest extends IPSModule {
 
     public function Create() {
         parent::Create();
+        // Unkritische Pfade
         $this->RegisterPropertyString("KeyFolderPath", "");
+        // Verschlüsselter Tresor
         $this->RegisterAttributeString("EncryptedVault", "");
     }
 
     public function ApplyChanges() {
         parent::ApplyChanges();
+        $this->SetStatus($this->ReadPropertyString("KeyFolderPath") == "" ? 104 : 102);
     }
 
+    /**
+     * DYNAMISCHES FORMULAR
+     */
     public function GetConfigurationForm(): string {
-        $this->LogMessage("--- Formular-Laden (Nested) ---", KL_MESSAGE);
+        $this->LogMessage("--- Formular-Laden (RequestAction-Way) ---", KL_MESSAGE);
 
-        // 1. Daten laden (Verschachteltes Array)
+        // 1. Daten laden und flachklopfen für die UI-Liste
         $nestedData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
-        
-        // 2. Daten für die Liste flachklopfen (z.B. "Ordner/Unterordner/Key")
         $flatValues = [];
         $this->FlattenArray($nestedData, "", $flatValues);
 
         $form = [
             "elements" => [
-                ["type" => "ValidationTextBox", "name" => "KeyFolderPath", "caption" => "Ordner für master.key"]
+                [
+                    "type" => "ValidationTextBox", 
+                    "name" => "KeyFolderPath", 
+                    "caption" => "Ordner für master.key"
+                ]
             ],
             "actions" => [
                 [
                     "type" => "List",
                     "name" => "VaultEditor",
-                    "caption" => "Verschachtelter Tresor (Nutze '/' im Ident für Pfade)",
+                    "caption" => "Nested Tresor (Nutze '/' im Ident für Pfade)",
                     "rowCount" => 10,
                     "add" => true,
                     "delete" => true,
                     "columns" => [
-                        ["caption" => "Pfad (z.B. Server/Web/Pass)", "name" => "Ident", "width" => "300px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
-                        ["caption" => "Wert", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "PasswordTextBox"]]
+                        ["caption" => "Pfad (Ident)", "name" => "Ident", "width" => "300px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
+                        ["caption" => "Wert (Secret)", "name" => "Secret", "width" => "auto", "add" => "", "edit" => ["type" => "PasswordTextBox"]]
                     ],
                     "values" => $flatValues
                 ],
                 [
                     "type" => "Button",
                     "caption" => "🔓 Tresor verschlüsselt speichern",
-                    // WICHTIG: Prefix AVT muss zur module.json passen
-                    "onClick" => "AVT_UpdateVault(\$id, \$VaultEditor);"
+                    /**
+                     * DER SUPPORT-WEG:
+                     * Wir rufen IPS_RequestAction auf. Das ist eine System-Funktion.
+                     * Wir wandeln die Liste in JSON um, damit $Value ein String ist.
+                     */
+                    "onClick" => "IPS_RequestAction(\$id, 'SaveVault', json_encode(\$VaultEditor));"
                 ]
             ]
         ];
@@ -55,45 +67,64 @@ class AttributeVaultTest extends IPSModule {
     }
 
     /**
-     * SPEICHERN: Baut aus den flachen Pfaden wieder ein tief verschachteltes Array
+     * DAS ZENTRALE EINGANGSTOR (RequestAction)
+     * Verarbeitet Befehle von der UI.
      */
-    public function UpdateVault($VaultEditor): void {
-        $this->LogMessage("--- Start Speichern (Nested) ---", KL_MESSAGE);
-        
-        $finalArray = [];
-        $count = 0;
+    public function RequestAction($Ident, $Value) {
+        switch ($Ident) {
+            case "SaveVault":
+                // $Value ist hier der JSON-String vom Button
+                $this->ProcessSaveVault($Value);
+                break;
 
-        foreach ($VaultEditor as $row) {
+            default:
+                throw new Exception("Action '$Ident' nicht bekannt.");
+        }
+    }
+
+    /**
+     * INTERNE SPEICHER-LOGIK
+     */
+    private function ProcessSaveVault(string $JsonData) {
+        $this->LogMessage("--- Start Speichern via RequestAction ---", KL_MESSAGE);
+        
+        $inputList = json_decode($JsonData, true);
+        if (!is_array($inputList)) {
+            $this->LogMessage("SaveVault: JSON-Fehler", KL_ERROR);
+            return;
+        }
+
+        $finalNestedArray = [];
+        foreach ($inputList as $row) {
             $path = (string)($row['Ident'] ?? '');
-            $value = (string)($row['Secret'] ?? '');
+            $secret = (string)($row['Secret'] ?? '');
 
             if ($path === "") continue;
 
+            // Pfad-Logik anwenden
             $parts = explode('/', $path);
-            $temp = &$finalArray;
-
+            $temp = &$finalNestedArray;
             foreach ($parts as $part) {
                 if (!isset($temp[$part]) || !is_array($temp[$part])) {
                     $temp[$part] = [];
                 }
                 $temp = &$temp[$part];
             }
-            $temp = $value;
-            $count++;
+            $temp = $secret;
         }
 
-        $encrypted = $this->EncryptData($finalArray);
+        $encrypted = $this->EncryptData($finalNestedArray);
         if ($encrypted !== "") {
             $this->WriteAttributeString("EncryptedVault", $encrypted);
-            $this->LogMessage("Nested Array gespeichert. Pfade verarbeitet: $count", KL_MESSAGE);
-            echo "✅ Tresor gespeichert!";
+            $this->LogMessage("Nested Vault gespeichert. Einträge: " . count($inputList), KL_MESSAGE);
+            echo "✅ Tresor erfolgreich gespeichert!";
         }
     }
 
-    /**
-     * API: Ermöglicht Zugriff auf tief geschachtelte Werte
-     * Beispiel: AVT_GetSecret($id, "Netzwerk/Router/Admin");
-     */
+    // =========================================================================
+    // ÖFFENTLICHE API (GetSecret)
+    // =========================================================================
+
     public function GetSecret(string $Path): string {
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $parts = explode('/', $Path);
@@ -106,6 +137,13 @@ class AttributeVaultTest extends IPSModule {
             }
         }
         return is_string($data) ? $data : (json_encode($data) ?: "");
+    }
+
+    public function GetIdentifiers(): string {
+        $nestedData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
+        $flatValues = [];
+        $this->FlattenArray($nestedData, "", $flatValues);
+        return json_encode(array_column($flatValues, 'Ident'));
     }
 
     // =========================================================================
@@ -130,7 +168,7 @@ class AttributeVaultTest extends IPSModule {
         $path = rtrim($folder, '/\\') . DIRECTORY_SEPARATOR . 'master.key';
         if (!file_exists($path)) {
             $key = bin2hex(random_bytes(16));
-            file_put_contents($path, $key);
+            @file_put_contents($path, $key);
         }
         return trim((string)file_get_contents($path));
     }
