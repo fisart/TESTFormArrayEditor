@@ -54,7 +54,7 @@ class AttributeVaultTest extends IPSModule {
             ]
         ];
 
-        // Navigation oben
+        // Navigation
         if ($currentPath !== "") {
             $form['actions'][] = ["type" => "Button", "caption" => "⬅️ Eine Ebene zurück", "onClick" => "AVT_NavigateUp(\$id);"];
         }
@@ -63,7 +63,7 @@ class AttributeVaultTest extends IPSModule {
         $form['actions'][] = [
             "type" => "List",
             "name" => "MasterListUI",
-            "caption" => "Auswahl (Klick auf Zeile)",
+            "caption" => "Inhalt (Klicken zum Öffnen/Editieren)",
             "rowCount" => 6,
             "columns" => [
                 ["caption" => " ", "name" => "Icon", "width" => "35px"],
@@ -74,7 +74,7 @@ class AttributeVaultTest extends IPSModule {
             "onClick" => "AVT_HandleClick(\$id, \$MasterListUI);"
         ];
 
-        // NEU: BEREICH ZUM ERSTELLEN
+        // BEREICH ZUM ERSTELLEN (Korrektur: Row statt HorizontalSection)
         $form['actions'][] = ["type" => "Label", "caption" => "➕ Neues Element an dieser Position erstellen:"];
         $form['actions'][] = [
             "type" => "ValidationTextBox",
@@ -83,10 +83,10 @@ class AttributeVaultTest extends IPSModule {
             "value" => ""
         ];
         $form['actions'][] = [
-            "type" => "HorizontalSection",
+            "type" => "Row",
             "items" => [
                 ["type" => "Button", "caption" => "📁 Ordner anlegen", "onClick" => "AVT_CreateItem(\$id, \$NewItemName, 'Folder');"],
-                ["type" => "Button", "caption" => "🔑 Gerät/Record anlegen", "onClick" => "AVT_CreateItem(\$id, \$NewItemName, 'Record');"]
+                ["type" => "Button", "caption" => "🔑 Gerät anlegen", "onClick" => "AVT_CreateItem(\$id, \$NewItemName, 'Record');"]
             ]
         ];
 
@@ -104,7 +104,7 @@ class AttributeVaultTest extends IPSModule {
             $form['actions'][] = ["type" => "Label", "caption" => "________________________________________________________________________________________________"];
             $form['actions'][] = [
                 "type" => "ExpansionPanel",
-                "caption" => "📝 Editor: " . $recordPath,
+                "caption" => "📝 Bearbeite Record: " . $recordPath,
                 "expanded" => true,
                 "items" => [
                     [
@@ -114,20 +114,17 @@ class AttributeVaultTest extends IPSModule {
                         "add" => true,
                         "delete" => true,
                         "columns" => [
-                            ["caption" => "Feld", "name" => "Key", "width" => "200px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
+                            ["caption" => "Feldname", "name" => "Key", "width" => "200px", "add" => "", "edit" => ["type" => "ValidationTextBox"]],
                             ["caption" => "Wert", "name" => "Value", "width" => "auto", "add" => "", "edit" => ["type" => "ValidationTextBox"]]
                         ],
                         "values" => $detailValues
                     ],
                     [
-                        "type" => "Button",
-                        "caption" => "💾 Speichern",
-                        "onClick" => "AVT_SaveRecord(\$id, \$DetailListUI);"
-                    ],
-                    [
-                        "type" => "Button",
-                        "caption" => "🗑️ Ganzen Eintrag löschen",
-                        "onClick" => "AVT_DeleteItem(\$id, '$selectedRecord');"
+                        "type" => "Row",
+                        "items" => [
+                            ["type" => "Button", "caption" => "💾 Details speichern", "onClick" => "AVT_SaveRecord(\$id, \$DetailListUI);"],
+                            ["type" => "Button", "caption" => "🗑️ Eintrag löschen", "onClick" => "AVT_DeleteItem(\$id, '$selectedRecord');"]
+                        ]
                     ]
                 ]
             ];
@@ -137,16 +134,14 @@ class AttributeVaultTest extends IPSModule {
     }
 
     // =========================================================================
-    // AKTIONEN FÜR DIE UI
+    // AKTIONEN
     // =========================================================================
 
     public function CreateItem(string $Name, string $Type): void {
-        if ($Name === "") { echo "Bitte einen Namen eingeben."; return; }
-        
+        if ($Name === "") return;
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $currentPath = $this->ReadAttributeString("CurrentPath");
 
-        // Pointer setzen
         $temp = &$masterData;
         if ($currentPath !== "") {
             foreach (explode('/', $currentPath) as $part) {
@@ -155,13 +150,11 @@ class AttributeVaultTest extends IPSModule {
             }
         }
 
-        if (isset($temp[$Name])) { echo "Name existiert bereits!"; return; }
-
         if ($Type === 'Folder') {
-            $temp[$Name] = ["__folder" => true]; // Markierung für leeren Ordner
+            $temp[$Name] = ["__folder" => true];
         } else {
-            $temp[$Name] = ["User" => "", "PW" => ""]; // Initialer Record
-            $this->WriteAttributeString("SelectedRecord", $Name); // Sofort zum Editieren öffnen
+            $temp[$Name] = ["User" => "", "PW" => ""];
+            $this->WriteAttributeString("SelectedRecord", $Name);
         }
 
         $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
@@ -171,7 +164,6 @@ class AttributeVaultTest extends IPSModule {
     public function DeleteItem(string $Name): void {
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $currentPath = $this->ReadAttributeString("CurrentPath");
-
         $temp = &$masterData;
         if ($currentPath !== "") {
             foreach (explode('/', $currentPath) as $part) {
@@ -179,7 +171,6 @@ class AttributeVaultTest extends IPSModule {
             }
         }
         unset($temp[$Name]);
-
         $this->WriteAttributeString("EncryptedVault", $this->EncryptData($masterData));
         $this->WriteAttributeString("SelectedRecord", "");
         $this->ReloadForm();
@@ -234,7 +225,7 @@ class AttributeVaultTest extends IPSModule {
     }
 
     // =========================================================================
-    // HELFER
+    // HELFER (KRYPTO & STRUKTUR)
     // =========================================================================
 
     private function CheckIfFolder($value): bool {
