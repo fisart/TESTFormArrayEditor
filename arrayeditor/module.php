@@ -21,7 +21,6 @@ class AttributeVaultTest extends IPSModule {
     public function GetConfigurationForm(): string {
         $this->LogMessage("--- FORMULAR-LADEN GESTARTET ---", KL_MESSAGE);
 
-        // 1. Daten laden und flachklopfen
         $encrypted = $this->ReadAttributeString("EncryptedVault");
         $this->LogMessage("Rohdaten im Attribut (Länge): " . strlen($encrypted), KL_MESSAGE);
 
@@ -51,11 +50,7 @@ class AttributeVaultTest extends IPSModule {
                 ],
                 [
                     "type" => "Button",
-                    "caption" => "🔓 Tresor verschlüsselt speichern",
-                    /**
-                     * WICHTIG: json_encode($VaultEditor) sorgt dafür, dass ein String gesendet wird.
-                     * Das verhindert den 'Cannot auto-convert' Fehler.
-                     */
+                    "caption" => "🔓 Tresor verschlüsseln & speichern",
                     "onClick" => "IPS_RequestAction(\$id, 'SaveVault', json_encode(\$VaultEditor));"
                 ]
             ]
@@ -72,7 +67,9 @@ class AttributeVaultTest extends IPSModule {
 
         switch ($Ident) {
             case "SaveVault":
-                // Debug: Was kommt als Text an?
+                // NEU: Diese Zeile zeigt uns den exakten Inhalt der Liste aus der UI
+                $this->LogMessage("Inhalt JSON: " . $Value, KL_MESSAGE);
+                
                 $this->LogMessage("Empfangener JSON-String (Länge): " . strlen((string)$Value), KL_MESSAGE);
                 
                 $data = json_decode((string)$Value, true);
@@ -120,7 +117,6 @@ class AttributeVaultTest extends IPSModule {
         if ($encrypted !== "") {
             $this->WriteAttributeString("EncryptedVault", $encrypted);
             
-            // Sofort-Check
             $verify = $this->ReadAttributeString("EncryptedVault");
             $this->LogMessage("ERFOLG: Tresor gespeichert. Attribut-Länge auf Disk: " . strlen($verify), KL_MESSAGE);
             
@@ -130,9 +126,6 @@ class AttributeVaultTest extends IPSModule {
         }
     }
 
-    /**
-     * ÖFFENTLICHE API (GetSecret)
-     */
     public function GetSecret(string $Path): string {
         $data = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
         $parts = explode('/', $Path);
@@ -145,10 +138,6 @@ class AttributeVaultTest extends IPSModule {
         }
         return is_string($data) ? $data : (json_encode($data) ?: "");
     }
-
-    // =========================================================================
-    // HILFSFUNKTIONEN (Flattening & Krypto)
-    // =========================================================================
 
     private function FlattenArray($array, $prefix, &$result) {
         if (!is_array($array)) return;
