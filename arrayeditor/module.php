@@ -38,10 +38,10 @@ class AttributeVaultTest extends IPSModule {
         $listValues = [];
         if (is_array($displayData)) {
             foreach ($displayData as $key => $value) {
-                // WICHTIG: Hier entscheiden wir anhand des Datentyps über das Icon
+                // WICHTIG: Hier entscheiden wir strikt anhand des Datentyps über das Icon
                 $isFolder = is_array($value);
                 $listValues[] = [
-                    "Icon"   => $isFolder ? "📁" : "🔑", // Ordner-Symbol links bei Arrays
+                    "Icon"   => $isFolder ? "📁" : "🔑", 
                     "Name"   => (string)$key,
                     "Type"   => $isFolder ? "Ordner" : "Wert",
                     "Value"  => $isFolder ? "" : (string)$value
@@ -77,7 +77,7 @@ class AttributeVaultTest extends IPSModule {
                             "caption" => " ", 
                             "name" => "Icon", 
                             "width" => "40px", 
-                            "add" => "🔑" // Standardwert für neue Zeilen
+                            "add" => "🔑" 
                         ],
                         [
                             "caption" => "Name", 
@@ -116,7 +116,7 @@ class AttributeVaultTest extends IPSModule {
                 ],
                 [
                     "type" => "Label",
-                    "caption" => "Markieren Sie einen Ordner (📁) und klicken Sie auf 'Ordner öffnen'."
+                    "caption" => "Um einen Ordner zu öffnen: Zeile markieren (📁) und Button klicken."
                 ],
                 [
                     "type" => "Button",
@@ -128,10 +128,6 @@ class AttributeVaultTest extends IPSModule {
 
         return json_encode($form);
     }
-
-    // =========================================================================
-    // NAVIGATION
-    // =========================================================================
 
     public function NavigateDown(string $Target, string $Type): void {
         if ($Type !== "Ordner") {
@@ -146,15 +142,12 @@ class AttributeVaultTest extends IPSModule {
 
     public function NavigateUp(): void {
         $current = $this->ReadAttributeString("CurrentPath");
+        if ($current === "") return;
         $parts = explode('/', $current);
         array_pop($parts);
         $this->WriteAttributeString("CurrentPath", implode('/', $parts));
         $this->ReloadForm();
     }
-
-    // =========================================================================
-    // SPEICHERN
-    // =========================================================================
 
     public function UpdateLevel($ExplorerList): void {
         $masterData = $this->DecryptData($this->ReadAttributeString("EncryptedVault"));
@@ -180,7 +173,7 @@ class AttributeVaultTest extends IPSModule {
             $val  = (string)($row['Value'] ?? '');
 
             if ($type === "Ordner") {
-                // Bestehenden Ordner-Inhalt behalten, falls vorhanden
+                // Hier erzwingen wir ein Array, damit es beim nächsten Laden als Ordner erkannt wird
                 $newList[$name] = (isset($temp[$name]) && is_array($temp[$name])) ? $temp[$name] : [];
             } else {
                 $newList[$name] = $val;
@@ -190,7 +183,7 @@ class AttributeVaultTest extends IPSModule {
         // Ebene im Speicher ersetzen
         $temp = $newList;
 
-        // Debug-Log zur Kontrolle der Struktur
+        // Debug-Log zur Kontrolle im Meldungsfenster
         $this->LogMessage("--- TRESOR SPEICHERUNG ---", KL_MESSAGE);
         $this->LogMessage(json_encode($masterData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), KL_MESSAGE);
 
@@ -199,13 +192,11 @@ class AttributeVaultTest extends IPSModule {
         if ($encrypted !== "") {
             $this->WriteAttributeString("EncryptedVault", $encrypted);
             $this->ReloadForm();
-            echo "✅ Ebene erfolgreich gespeichert!";
+            echo "✅ Ebene gespeichert und Icons aktualisiert!";
         }
     }
 
-    // =========================================================================
-    // KRYPTO-BASIS
-    // =========================================================================
+    // --- Krypto-Logik (unverändert) ---
 
     private function GetMasterKey(): string {
         $folder = $this->ReadPropertyString("KeyFolderPath");
